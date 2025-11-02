@@ -141,7 +141,39 @@ export async function searchChords(query: string): Promise<ChordData[]> {
   const chords = await loadChordDatabase();
   const lowerQuery = query.toLowerCase();
   
-  return chords.filter((chord: ChordData) => 
+  const results = chords.filter((chord: ChordData) => 
     chord.name.toLowerCase().includes(lowerQuery)
-  ).slice(0, 20); // Limit results for performance
+  );
+  
+  // Sort results to prioritize better matches
+  const sortedResults = results.sort((a, b) => {
+    const aName = a.name.toLowerCase();
+    const bName = b.name.toLowerCase();
+    
+    // 1. Exact matches first
+    if (aName === lowerQuery && bName !== lowerQuery) return -1;
+    if (bName === lowerQuery && aName !== lowerQuery) return 1;
+    
+    // 2. Starts with query second
+    const aStartsWith = aName.startsWith(lowerQuery);
+    const bStartsWith = bName.startsWith(lowerQuery);
+    if (aStartsWith && !bStartsWith) return -1;
+    if (bStartsWith && !aStartsWith) return 1;
+    
+    // 3. Prefer simpler chords (Major/Minor triads)
+    const aIsSimple = a.type === 'Major' && a.extension === 'Triad';
+    const bIsSimple = b.type === 'Major' && b.extension === 'Triad';
+    if (aIsSimple && !bIsSimple) return -1;
+    if (bIsSimple && !aIsSimple) return 1;
+    
+    // 4. Shorter names first (simpler chords)
+    if (aName.length !== bName.length) {
+      return aName.length - bName.length;
+    }
+    
+    // 5. Alphabetical order
+    return aName.localeCompare(bName);
+  });
+  
+  return sortedResults.slice(0, 20); // Limit results for performance
 }

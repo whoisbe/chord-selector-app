@@ -1,4 +1,4 @@
-# Chord Selector Application
+# Chord Lookup Application
 
 Live version running [here](https://chords.still.codes/)
 

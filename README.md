@@ -1,6 +1,6 @@
 # Chord Selector Application
 
-Live version running [here](chords.still.codes)
+Live version running [here](https://chords.still.codes/)
 
 Chord Selector is an interactive web tool for piano chord lookup and visualization. Designed for musicians, students, and composers, it allows you to search and explore a wide variety of piano chords by musical key or chord name, with instant feedback through visual keyboard diagrams and chord voicings.
 

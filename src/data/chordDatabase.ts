@@ -37,11 +37,49 @@ function noteToMidi(noteName: string): number {
   return baseNote + 60; // Place in 4th octave (C4 = 60)
 }
 
+// Convert chord notes to MIDI preserving voicing order
+// Ensures all notes are in ascending order by moving them up octaves as needed
+function convertChordNotesToMidi(notes: string[]): number[] {
+  if (notes.length === 0) return [];
+  
+  const midiNotes: number[] = [];
+  
+  // Convert first note (root) normally
+  const rootMidi = noteToMidi(notes[0]);
+  midiNotes.push(rootMidi);
+  
+  // For subsequent notes, ensure each is higher than the previous
+  for (let i = 1; i < notes.length; i++) {
+    let noteMidi = noteToMidi(notes[i]);
+    
+    // Keep moving the note up octaves until it's higher than the previous note
+    while (noteMidi <= midiNotes[midiNotes.length - 1]) {
+      noteMidi += 12;
+    }
+    
+    midiNotes.push(noteMidi);
+  }
+  
+  return midiNotes;
+}
+
 // Parse CSV data into chord objects
 async function parseChordData(): Promise<ChordData[]> {
   try {
-    const response = await fetch('/chords.csv');
-    const csvText = await response.text();
+    let csvText: string;
+    
+    // Check if we're in a Node.js environment (for testing)
+    if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+      // Node.js environment - read file directly
+      const fs = await import('fs');
+      const path = await import('path');
+      const filePath = path.join(process.cwd(), 'public', 'chords.csv');
+      csvText = fs.readFileSync(filePath, 'utf-8');
+    } else {
+      // Browser environment - use fetch
+      const response = await fetch('/chords.csv');
+      csvText = await response.text();
+    }
     
     const lines = csvText.trim().split('\n');
     const chords: ChordData[] = [];
@@ -60,7 +98,7 @@ async function parseChordData(): Promise<ChordData[]> {
       
       const [, name, notesStr, type, extension] = matches;
       const notes = notesStr.split(',').map((note: string) => note.trim());
-      const midiNotes = notes.map(noteToMidi);
+      const midiNotes = convertChordNotesToMidi(notes);
       
       chords.push({
         name: name.trim(),
@@ -86,37 +124,47 @@ export function calculateVoicings(chord: ChordData): ChordVoicing[] {
     return [];
   }
   
-  // Sort notes to ensure consistent ordering
-  const sortedNotes = [...midiNotes].sort((a, b) => a - b);
+  // Keep original order for root position (CSV order is root position)
+  // The CSV should have notes in root position order (root, 3rd, 5th, etc.)
+  const rootNotes = [...midiNotes];
   
   const voicings: ChordVoicing[] = [];
   
-  // Root position
+  // Root position - keep original order from CSV
   voicings.push({
     name: 'Root',
-    notes: sortedNotes
+    notes: rootNotes
   });
   
-  // First inversion - move lowest note up an octave
-  if (sortedNotes.length > 1) {
-    const firstInv = [...sortedNotes];
-    firstInv[0] += 12; // Move root up an octave
-    firstInv.sort((a, b) => a - b);
-    voicings.push({
-      name: '1st Inv',
-      notes: firstInv
-    });
-  }
+  // Generate inversions by rotating notes and ensuring ascending order
+  const numInversions = Math.min(rootNotes.length, 4); // Max 4 voicings
   
-  // Second inversion - move two lowest notes up an octave
-  if (sortedNotes.length > 2) {
-    const secondInv = [...sortedNotes];
-    secondInv[0] += 12; // Move root up an octave
-    secondInv[1] += 12; // Move second note up an octave
-    secondInv.sort((a, b) => a - b);
+  for (let inv = 1; inv < numInversions; inv++) {
+    const invNotes = [...rootNotes];
+    
+    // Move the first 'inv' notes up an octave
+    for (let i = 0; i < inv; i++) {
+      invNotes[i] += 12;
+    }
+    
+    // Rotate array by moving first 'inv' notes to the end
+    const rotatedNotes = invNotes.slice(inv).concat(invNotes.slice(0, inv));
+    
+    // Ensure notes are in ascending order by adjusting octaves if needed
+    const sortedInversion: number[] = [rotatedNotes[0]];
+    for (let i = 1; i < rotatedNotes.length; i++) {
+      let note = rotatedNotes[i];
+      // If this note is lower than the previous, move it up an octave
+      while (note <= sortedInversion[sortedInversion.length - 1]) {
+        note += 12;
+      }
+      sortedInversion.push(note);
+    }
+    
+    const inversionName = inv === 1 ? '1st Inv' : inv === 2 ? '2nd Inv' : '3rd Inv';
     voicings.push({
-      name: '2nd Inv',
-      notes: secondInv
+      name: inversionName,
+      notes: sortedInversion
     });
   }
   

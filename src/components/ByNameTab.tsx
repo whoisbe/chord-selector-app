@@ -182,6 +182,7 @@ export function ByNameTab() {
                       key={`${chord.name}-${index}`}
                       notes={voicing.notes}
                       voicingName={voicing.name}
+                      noteNames={voicing.noteNames}
                     />
                   ))}
                 </div>

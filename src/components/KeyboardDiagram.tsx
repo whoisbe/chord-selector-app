@@ -3,9 +3,10 @@ import React from 'react';
 interface KeyboardDiagramProps {
   notes: number[];
   voicingName: string;
+  noteNames?: string[];
 }
 
-export function KeyboardDiagram({ notes, voicingName }: KeyboardDiagramProps) {
+export function KeyboardDiagram({ notes, voicingName, noteNames }: KeyboardDiagramProps) {
   // Generate 2 octaves of keys starting from C (MIDI 60)
   const startNote = 60; // C4
   const numOctaves = 2;
@@ -29,8 +30,16 @@ export function KeyboardDiagram({ notes, voicingName }: KeyboardDiagramProps) {
   }
   
   const getNoteName = (midi: number) => {
-    const noteNames = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
-    return noteNames[midi % 12];
+    // If noteNames are provided, use them for correct enharmonics
+    if (noteNames) {
+      const noteIndex = notes.indexOf(midi);
+      if (noteIndex !== -1 && noteIndex < noteNames.length) {
+        return noteNames[noteIndex];
+      }
+    }
+    // Fallback to default sharp notation
+    const defaultNames = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+    return defaultNames[midi % 12];
   };
   
   return (

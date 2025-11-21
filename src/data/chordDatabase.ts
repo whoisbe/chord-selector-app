@@ -12,6 +12,7 @@ export interface ChordData {
 export interface ChordVoicing {
   name: string;
   notes: number[];
+  noteNames: string[];
 }
 
 // Convert note name to MIDI number (C4 = 60)
@@ -118,7 +119,7 @@ async function parseChordData(): Promise<ChordData[]> {
 
 // Calculate chord inversions
 export function calculateVoicings(chord: ChordData): ChordVoicing[] {
-  const { name, midiNotes } = chord;
+  const { name, midiNotes, notes: noteNames } = chord;
   
   if (midiNotes.length === 0) {
     return [];
@@ -127,6 +128,7 @@ export function calculateVoicings(chord: ChordData): ChordVoicing[] {
   // Keep original order for root position (CSV order is root position)
   // The CSV should have notes in root position order (root, 3rd, 5th, etc.)
   const rootNotes = [...midiNotes];
+  const rootNoteNames = [...noteNames];
   
   // Keyboard range: C4 (MIDI 60) to B5 (MIDI 83) - 2 octaves
   const KEYBOARD_MIN = 60;
@@ -137,7 +139,8 @@ export function calculateVoicings(chord: ChordData): ChordVoicing[] {
   // Root position - keep original order from CSV
   voicings.push({
     name: 'Root',
-    notes: rootNotes
+    notes: rootNotes,
+    noteNames: rootNoteNames
   });
   
   // Generate inversions by rotating notes and ensuring ascending order
@@ -165,6 +168,9 @@ export function calculateVoicings(chord: ChordData): ChordVoicing[] {
       sortedInversion.push(note);
     }
     
+    // Rotate note names to match the inversion
+    const rotatedNoteNames = rootNoteNames.slice(inv).concat(rootNoteNames.slice(0, inv));
+    
     // If the highest note exceeds the keyboard range, shift all notes down an octave
     const highestNote = Math.max(...sortedInversion);
     if (highestNote > KEYBOARD_MAX) {
@@ -173,13 +179,15 @@ export function calculateVoicings(chord: ChordData): ChordVoicing[] {
       const inversionName = inv === 1 ? '1st Inv' : inv === 2 ? '2nd Inv' : '3rd Inv';
       voicings.push({
         name: inversionName,
-        notes: adjustedNotes
+        notes: adjustedNotes,
+        noteNames: rotatedNoteNames
       });
     } else {
       const inversionName = inv === 1 ? '1st Inv' : inv === 2 ? '2nd Inv' : '3rd Inv';
       voicings.push({
         name: inversionName,
-        notes: sortedInversion
+        notes: sortedInversion,
+        noteNames: rotatedNoteNames
       });
     }
   }

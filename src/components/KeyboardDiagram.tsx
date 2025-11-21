@@ -99,20 +99,59 @@ export function KeyboardDiagram({ notes, voicingName }: KeyboardDiagramProps) {
         </div>
         
         {/* Note labels below keyboard */}
-        <div className="flex gap-[1px] mt-1">
-          {whiteKeys.map((midiNote) => {
-            const isActive = notes.includes(midiNote);
-            return (
-              <div
-                key={`label-${midiNote}`}
-                className={`w-5 text-center text-xs ${
-                  isActive ? 'text-red-600' : 'text-muted-foreground'
-                }`}
-              >
-                {isActive ? getNoteName(midiNote) : ''}
-              </div>
-            );
-          })}
+        <div className="relative">
+          {/* White key labels */}
+          <div className="flex gap-[1px]">
+            {whiteKeys.map((midiNote) => {
+              const isActive = notes.includes(midiNote);
+              return (
+                <div
+                  key={`label-${midiNote}`}
+                  className={`w-5 text-center text-xs ${
+                    isActive ? 'text-red-600' : 'text-muted-foreground'
+                  }`}
+                >
+                  {isActive ? getNoteName(midiNote) : ''}
+                </div>
+              );
+            })}
+          </div>
+          
+          {/* Black key labels */}
+          <div className="absolute top-0 left-0 pointer-events-none">
+            {whiteKeys.map((whiteKeyMidi, index) => {
+              const noteInOctave = whiteKeyMidi % 12;
+              
+              let blackKeyMidi = null;
+              if (noteInOctave === 0) blackKeyMidi = whiteKeyMidi + 1; // C#
+              else if (noteInOctave === 2) blackKeyMidi = whiteKeyMidi + 1; // D#
+              else if (noteInOctave === 5) blackKeyMidi = whiteKeyMidi + 1; // F#
+              else if (noteInOctave === 7) blackKeyMidi = whiteKeyMidi + 1; // G#
+              else if (noteInOctave === 9) blackKeyMidi = whiteKeyMidi + 1; // A#
+              
+              const hasBlackKey = blackKeyMidi && blackKeys.includes(blackKeyMidi);
+              const isActive = blackKeyMidi && notes.includes(blackKeyMidi);
+              
+              if (!hasBlackKey || !isActive) return null;
+              
+              const whiteKeyWidth = 20;
+              const gapWidth = 1;
+              const leftPosition = index * (whiteKeyWidth + gapWidth) + whiteKeyWidth + (gapWidth / 2);
+              
+              return (
+                <div
+                  key={`black-label-${blackKeyMidi}`}
+                  className="absolute text-xs text-red-600"
+                  style={{
+                    left: `${leftPosition}px`,
+                    transform: 'translateX(-50%)'
+                  }}
+                >
+                  {getNoteName(blackKeyMidi!)}
+                </div>
+              );
+            }).filter(Boolean)}
+          </div>
         </div>
       </div>
     </div>

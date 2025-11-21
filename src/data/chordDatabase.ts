@@ -128,6 +128,10 @@ export function calculateVoicings(chord: ChordData): ChordVoicing[] {
   // The CSV should have notes in root position order (root, 3rd, 5th, etc.)
   const rootNotes = [...midiNotes];
   
+  // Keyboard range: C4 (MIDI 60) to B5 (MIDI 83) - 2 octaves
+  const KEYBOARD_MIN = 60;
+  const KEYBOARD_MAX = 83;
+  
   const voicings: ChordVoicing[] = [];
   
   // Root position - keep original order from CSV
@@ -161,11 +165,23 @@ export function calculateVoicings(chord: ChordData): ChordVoicing[] {
       sortedInversion.push(note);
     }
     
-    const inversionName = inv === 1 ? '1st Inv' : inv === 2 ? '2nd Inv' : '3rd Inv';
-    voicings.push({
-      name: inversionName,
-      notes: sortedInversion
-    });
+    // If the highest note exceeds the keyboard range, shift all notes down an octave
+    const highestNote = Math.max(...sortedInversion);
+    if (highestNote > KEYBOARD_MAX) {
+      const adjustedNotes = sortedInversion.map(note => note - 12);
+      
+      const inversionName = inv === 1 ? '1st Inv' : inv === 2 ? '2nd Inv' : '3rd Inv';
+      voicings.push({
+        name: inversionName,
+        notes: adjustedNotes
+      });
+    } else {
+      const inversionName = inv === 1 ? '1st Inv' : inv === 2 ? '2nd Inv' : '3rd Inv';
+      voicings.push({
+        name: inversionName,
+        notes: sortedInversion
+      });
+    }
   }
   
   return voicings;

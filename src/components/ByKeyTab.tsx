@@ -152,7 +152,7 @@ export function ByKeyTab() {
                 <div className="flex gap-6">
                   {voicings.map((voicing, index) => (
                     <KeyboardDiagram
-                      key={`${selectedChord.name}-${index}`}
+                      key={`${chord}-${index}`}
                       notes={voicing.notes}
                       voicingName={voicing.name}
                       noteNames={voicing.noteNames}

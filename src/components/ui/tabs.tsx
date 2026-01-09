@@ -26,7 +26,7 @@ function TabsList({
     <TabsPrimitive.List
       data-slot="tabs-list"
       className={cn(
-        "text-muted-foreground inline-flex h-10 w-full items-center justify-start gap-6",
+        "inline-flex items-center justify-center gap-2",
         className,
       )}
       {...props}
@@ -43,13 +43,15 @@ function TabsTrigger({
       data-slot="tabs-trigger"
       className={cn(
         // Base styles
-        "inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium whitespace-nowrap",
+        "inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium whitespace-nowrap",
         "transition-all duration-200",
         "ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-        // Default/inactive state
-        "text-muted-foreground bg-transparent",
+        // Default/inactive state - dark gray background with border
+        "text-foreground bg-accent border border-border",
         // Hover state for inactive tabs
-        "hover:text-foreground hover:bg-muted",
+        "hover:bg-muted",
+        // Active state - bright green
+        "data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-transparent",
         // Disabled state
         "disabled:pointer-events-none disabled:opacity-50",
         // SVG icon styles

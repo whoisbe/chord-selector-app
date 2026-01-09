@@ -130,7 +130,10 @@ export function ByKeyTab() {
                   variant={isSelected ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => toggleChord(chord)}
-                  className="min-w-[60px]"
+                  className={cn(
+                    "min-w-[60px]",
+                    isSelected && "bg-primary text-primary-foreground"
+                  )}
                 >
                   {chord}
                 </Button>

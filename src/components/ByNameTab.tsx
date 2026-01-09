@@ -137,11 +137,11 @@ export function ByNameTab() {
           {isSearching ? (
             <div className="text-sm text-muted-foreground p-2">Searching...</div>
           ) : searchResults.length > 0 ? (
-            <div className="border rounded-md max-h-48 overflow-y-auto">
+            <div className="border border-border rounded-lg max-h-48 overflow-y-auto bg-card">
               {searchResults.map((chord) => (
                 <div
                   key={chord.name}
-                  className="p-2 hover:bg-muted cursor-pointer border-b last:border-b-0 flex justify-between items-center"
+                  className="p-2 hover:bg-muted cursor-pointer border-b border-border last:border-b-0 flex justify-between items-center"
                   onClick={() => addToCollection(chord)}
                 >
                   <div>

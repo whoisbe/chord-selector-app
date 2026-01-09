@@ -45,26 +45,48 @@ export function KeyboardDiagram({ notes, voicingName, noteNames }: KeyboardDiagr
   return (
     <div className="flex flex-col gap-1">
       <div className="text-muted-foreground text-sm">{voicingName}</div>
-      <div className="relative inline-block">
+      <div className="relative inline-block" style={{ minHeight: '80px' }}>
         {/* White keys */}
-        <div className="flex gap-[1px]">
+        <div className="flex gap-[1px] relative z-0">
           {whiteKeys.map((midiNote) => {
             const isActive = notes.includes(midiNote);
             return (
               <div
                 key={`white-${midiNote}`}
-                className={`w-5 h-20 border border-border rounded-b transition-all ${
+                className={`w-5 h-20 border border-border rounded-b transition-all relative ${
                   isActive 
-                    ? 'bg-gradient-to-b from-red-400 via-red-500 to-red-600 shadow-[inset_0_2px_4px_rgba(255,255,255,0.4),inset_0_-2px_4px_rgba(0,0,0,0.3)] border-red-700' 
+                    ? 'shadow-lg' 
                     : 'bg-white shadow-sm'
                 }`}
-              />
+                style={isActive ? {
+                  background: 'linear-gradient(135deg, rgba(31, 112, 95, 0.85) 0%, rgba(31, 112, 95, 0.95) 50%, rgba(20, 80, 70, 0.9) 100%)',
+                  borderColor: '#1f705f',
+                  backdropFilter: 'blur(10px) saturate(180%)',
+                  WebkitBackdropFilter: 'blur(10px) saturate(180%)',
+                  boxShadow: `
+                    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+                    inset 0 -1px 0 rgba(0, 0, 0, 0.3),
+                    0 4px 12px rgba(31, 112, 95, 0.4),
+                    0 2px 4px rgba(0, 0, 0, 0.2)
+                  `,
+                } : undefined}
+              >
+                {isActive && (
+                  <div 
+                    className="absolute inset-0 rounded-b pointer-events-none"
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, transparent 50%, rgba(0, 0, 0, 0.1) 100%)',
+                      mixBlendMode: 'overlay',
+                    }}
+                  />
+                )}
+              </div>
             );
           })}
         </div>
         
         {/* Black keys */}
-        <div className="absolute top-0 left-0 pointer-events-none">
+        <div className="absolute top-0 left-0 pointer-events-none z-10" style={{ width: '100%', height: '80px' }}>
           {whiteKeys.map((whiteKeyMidi, index) => {
             const noteInOctave = whiteKeyMidi % 12;
             
@@ -95,20 +117,45 @@ export function KeyboardDiagram({ notes, voicingName, noteNames }: KeyboardDiagr
                 key={`black-key-${blackKeyMidi}`}
                 className={`absolute w-3 h-12 rounded-b transition-all ${
                   isActive 
-                    ? 'bg-gradient-to-b from-red-500 via-red-600 to-red-700 shadow-[inset_0_2px_4px_rgba(255,255,255,0.3),inset_0_-2px_4px_rgba(0,0,0,0.4)] border border-red-800' 
+                    ? 'shadow-lg' 
                     : 'bg-black shadow-md'
                 }`}
                 style={{
                   left: `${leftPosition}px`,
-                  transform: 'translateX(-50%)'
+                  top: '0px',
+                  transform: 'translateX(-50%)',
+                  ...(isActive ? {
+                    background: 'linear-gradient(135deg, rgba(31, 112, 95, 0.9) 0%, rgba(31, 112, 95, 1) 50%, rgba(15, 60, 50, 0.95) 100%)',
+                    borderColor: '#1f705f',
+                    borderWidth: '1px',
+                    borderStyle: 'solid',
+                    backdropFilter: 'blur(10px) saturate(180%)',
+                    WebkitBackdropFilter: 'blur(10px) saturate(180%)',
+                    boxShadow: `
+                      inset 0 1px 0 rgba(255, 255, 255, 0.3),
+                      inset 0 -1px 0 rgba(0, 0, 0, 0.4),
+                      0 4px 12px rgba(31, 112, 95, 0.5),
+                      0 2px 4px rgba(0, 0, 0, 0.3)
+                    `,
+                  } : {})
                 }}
-              />
+              >
+                {isActive && (
+                  <div 
+                    className="absolute inset-0 rounded-b pointer-events-none"
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, transparent 50%, rgba(0, 0, 0, 0.15) 100%)',
+                      mixBlendMode: 'overlay',
+                    }}
+                  />
+                )}
+              </div>
             );
           }).filter(Boolean)}
         </div>
         
         {/* Note labels below keyboard */}
-        <div className="relative">
+        <div className="relative mt-1" style={{ marginTop: '4px' }}>
           {/* White key labels */}
           <div className="flex gap-[1px]">
             {whiteKeys.map((midiNote) => {
@@ -117,7 +164,7 @@ export function KeyboardDiagram({ notes, voicingName, noteNames }: KeyboardDiagr
                 <div
                   key={`label-${midiNote}`}
                   className={`w-5 text-center text-xs ${
-                    isActive ? 'text-red-600' : 'text-muted-foreground'
+                    isActive ? 'text-[#1f705f] font-semibold' : 'text-muted-foreground'
                   }`}
                 >
                   {isActive ? getNoteName(midiNote) : ''}
@@ -150,7 +197,7 @@ export function KeyboardDiagram({ notes, voicingName, noteNames }: KeyboardDiagr
               return (
                 <div
                   key={`black-label-${blackKeyMidi}`}
-                  className="absolute text-xs text-red-600"
+                  className="absolute text-xs text-[#1f705f] font-semibold"
                   style={{
                     left: `${leftPosition}px`,
                     transform: 'translateX(-50%)'

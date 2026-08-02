@@ -31,6 +31,13 @@ export function Header({ activeTab, onTabChange }: HeaderProps) {
           >
             By Name
           </Button>
+          <Button
+            variant={activeTab === 'phrase-lookup' ? 'default' : 'outline'}
+            onClick={() => onTabChange('phrase-lookup')}
+            className="rounded-lg"
+          >
+            Phrase Lookup
+          </Button>
         </div>
       </div>
     </header>

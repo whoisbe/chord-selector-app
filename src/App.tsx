@@ -3,6 +3,7 @@ import { Tabs, TabsContent } from './components/ui/tabs';
 import { Header } from './components/Header';
 import { ByKeyTab } from './components/ByKeyTab';
 import { ByNameTab } from './components/ByNameTab';
+import { PhraseLookupTab } from './components/PhraseLookupTab';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('by-key');
@@ -20,6 +21,10 @@ export default function App() {
             
             <TabsContent value="by-name">
               <ByNameTab />
+            </TabsContent>
+
+            <TabsContent value="phrase-lookup">
+              <PhraseLookupTab />
             </TabsContent>
           </Tabs>
         </div>

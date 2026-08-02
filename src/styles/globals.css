@@ -227,3 +227,42 @@ html {
   font-size: 0.75rem;
   color: var(--muted-foreground);
 }
+
+/* Loop 006 — phrase keyboard.
+   src/index.css is a pre-compiled Tailwind v4 artifact and there is no
+   Tailwind build step in this project, so any utility class not already
+   compiled into it does not exist. These hand-authored rules cover what the
+   phrase keyboard needs beyond the utilities that are present — in particular
+   :focus-visible, which an inline style cannot express. */
+.phrase-keyboard-scroll {
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+}
+
+.phrase-key {
+  position: absolute;
+  top: 0;
+  padding: 0;
+  border-radius: 0 0 4px 4px;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, opacity 120ms ease;
+}
+
+/* Every key is reachable and visibly focusable from the keyboard. */
+.phrase-key:focus-visible {
+  outline: 2px solid #1f705f;
+  outline-offset: 1px;
+  z-index: 30;
+}
+
+/* Octave landmarks sit below the black keys (48px) so nothing overlaps them. */
+.phrase-key-label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 4px;
+  text-align: center;
+  font-size: 8px;
+  line-height: 9px;
+  pointer-events: none;
+}

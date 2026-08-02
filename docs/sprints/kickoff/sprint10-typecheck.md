@@ -134,8 +134,7 @@ Add the script: `"typecheck": "tsc --noEmit"`.
 | 3 | `strict: true` | present in the committed `tsconfig.json` |
 | 4 | `npm test` | all suites pass, none skipped |
 | 5 | `npm run build` | succeeds |
-| 6 | Dependency delta | `git diff package.json` shows **exactly one addition — `typescript`** — in `devDependencies`; record the exact resolved version |
-| 6b | `src/vite-env.d.ts` | present, containing only the `vite/client` reference; no `TS2882` errors remain |
+| 6 | Dependency delta | `git diff package.json` shows **exactly one addition — `typescript`** — in `devDependencies` |
 | 7 | Lockfile | changed only as installing `typescript` requires |
 | 8 | Import fixes | each `ui/*` diff touches only the import line |
 | 9 | `getChordVoicings` | returns `noteNames` ordered to match `notes` for **all three voicings**, inversions included |

@@ -46,14 +46,6 @@ A macro-layer spike measured **11 errors at current head under `strict: true`**:
 
 Seven errors are one mechanical class: Figma exports wrote `from 'lucide-react@0.487.0'` instead of `from 'lucide-react'`. The packages are correctly declared in `package.json` without suffixes. **Strip the suffix and change nothing else on those lines.**
 
-## TypeScript version — resolved
-
-Install **`typescript@^7.0.2`**, the current release. Do **not** pin to 5.9.3.
-
-The original spike used 5.9.3; the macro layer re-measured 7.0.2 against this repository and it reaches the **same 11-error baseline, in the same files**, given the two adjustments already folded into Section 4 — `baseUrl` removed (TS 7 removed the option) and `src/vite-env.d.ts` added (standard in Vite TypeScript templates; without it TS 7 emits two `TS2882` errors for `main.tsx`'s CSS imports). `vitest run` was confirmed green under 7.0.2.
-
-Record the exact resolved version in your output — the baseline is version-dependent.
-
 ## 4. Validated tsconfig
 
 This exact config produced the 11-error baseline. Start here.
@@ -73,21 +65,12 @@ This exact config produced the 11-error baseline. Start here.
     "noEmit": true,
     "jsx": "react-jsx",
     "strict": true,
+    "baseUrl": ".",
     "paths": { "@/*": ["./src/*"] }
   },
   "include": ["src", "vite.config.ts", "vitest.config.ts"]
 }
 ```
-
-**`baseUrl` is deliberately absent.** TypeScript 7 removed it (`TS5102`). `paths` works without it, resolved relative to the tsconfig file. The `@/*` alias is in fact used by **zero** files in this repo, so `paths` could also be dropped entirely — it is kept only to match `vitest.config.ts`.
-
-**Also required: `src/vite-env.d.ts`** containing exactly:
-
-```
-/// <reference types="vite/client" />
-```
-
-Without it, TypeScript 7 emits two `TS2882` errors for the CSS side-effect imports in `src/main.tsx`. Every standard Vite TypeScript template ships this file; this repo never had one because it never had TypeScript configured. Adding it is standard hygiene, not a workaround.
 
 Error 11 needs a deliberate resolution — `allowJs` plus including `scripts`, a `.d.ts` declaration, or another approach. Choose one, and say why in the output.
 
@@ -111,7 +94,7 @@ Add the script: `"typecheck": "tsc --noEmit"`.
 
 **Task 1.** `npm install --save-dev typescript`. This is the one authorised dependency addition.
 
-**Task 2.** Add `tsconfig.json` from Section 4, add `src/vite-env.d.ts`, and add the `typecheck` script. Run `npm run typecheck` and **record the full baseline output** — count and per-file breakdown — before fixing anything. Expect **11**, matching the macro-layer measurement on TypeScript 7.0.2 with this exact configuration.
+**Task 2.** Add `tsconfig.json` from Section 4 and the `typecheck` script. Run `npm run typecheck` and **record the full baseline output** — count and per-file breakdown — before fixing anything.
 
 **Task 3.** Fix the 7 version-suffixed imports. Specifier only.
 
@@ -134,8 +117,7 @@ Add the script: `"typecheck": "tsc --noEmit"`.
 | 3 | `strict: true` | present in the committed `tsconfig.json` |
 | 4 | `npm test` | all suites pass, none skipped |
 | 5 | `npm run build` | succeeds |
-| 6 | Dependency delta | `git diff package.json` shows **exactly one addition — `typescript`** — in `devDependencies`; record the exact resolved version |
-| 6b | `src/vite-env.d.ts` | present, containing only the `vite/client` reference; no `TS2882` errors remain |
+| 6 | Dependency delta | `git diff package.json` shows **exactly one addition — `typescript`** — in `devDependencies` |
 | 7 | Lockfile | changed only as installing `typescript` requires |
 | 8 | Import fixes | each `ui/*` diff touches only the import line |
 | 9 | `getChordVoicings` | returns `noteNames` ordered to match `notes` for **all three voicings**, inversions included |

@@ -82,7 +82,8 @@ flowchart LR
 | ~~003 score data source decision~~ | Architecture-conformance | **superseded** — spike run inline, see ADR 0001 | — |
 | [008 port to chord-selector-app](loops/008-port-to-chord-selector-app.md) | Completion | **DONE** | — |
 | [004 MusicXML ingestion](loops/004-musicxml-ingestion.md) | Completion | **DONE** (accepted; defect found in review → 009) | — |
-| [009 staff/pitch pairing repair](loops/009-staff-pairing-repair.md) | Repair | **NEXT — handed to Claude Code** | — |
+| [009 staff/pitch pairing repair](loops/009-staff-pairing-repair.md) | Repair | **DONE** | — |
+| [010 adopt TypeScript typechecking](loops/010-typescript-typechecking.md) | Governance | **NEXT — handed to Codex** | — |
 | ~~005 Tailwind v3→v4 repair~~ | Repair | **dead** — defect was chordsense-only | — |
 | [006 two-row virtual keyboard input](loops/006-two-row-keyboard-input.md) | Completion | engineered, **spec needs revision against KeyboardDiagram.tsx** | 004 |
 | 007 shape matching and eval harness | Eval | directional | 004 |
@@ -197,13 +198,35 @@ Open axes to evaluate: interval-sequence invariance, subset matching for forgott
 
 The moment anything relaxes, results must be **ranked**, not just found. That is the real architectural change hiding in this loop.
 
-### 009 staff/pitch pairing repair — NEXT
+### 009 staff/pitch pairing repair — DONE
+
+Executor: Claude Code. Terminal state `DONE`, zero repair attempts. Two commits in the required order: `b5f176d` Loop 004's ingestion, then `f6e3228` the repair.
+
+Verified independently against the committed blob: **0 duplicate `(pitch, staff)` pairs**, **115 cross-staff groups preserved**, 0 length mismatches, and 0 pairing errors when `copyGroup` is simulated over all 823 groups. Four new tests, including the literal 115 assertion and the founding-match pairing.
+
+Two review notes worth carrying. The chosen design pairs, dedupes and sorts inside `copyGroup` — the smallest-diff option, so the invariant is **test-enforced rather than structurally impossible**; a future function that touches `notes` without `staves` could reintroduce the desync. And the macro layer initially reported a duplicate-pair defect that did not exist: it read a **stale staged copy** rather than the committed artifact. Verifying against `git show <sha>:<path>` instead of a working-tree snapshot is the durable lesson.
+
+### 009 — original spec context
 
 `copyGroup` sorts and deduplicates `notes` while spreading the parallel `staves` array through unchanged, so the two desynchronize in every group the search returns. **115 of 823 groups span more than one staff, and all 115 mispair** — including the m12 beat 4 founding match, where F#3 and F#4 have their staves inverted.
 
 Latent today, because nothing reads `staves` yet. That is exactly why all 15 of Loop 004's checks passed honestly. But ADR 0002 retains staff for display and ranking, and Loop 006 renders two rows keyed on staff — it would place notes on the wrong row, silently, in the very cross-staff case ADR 0002 exists to serve.
 
 The spec fixes the invariant rather than the function, deduplicates on `(pitch, staff)` pairs rather than pitch alone, and folds in Loop 004's missing commit.
+
+### 010 adopt TypeScript typechecking — NEXT
+
+See ADR 0003. The project is TypeScript with **no `tsconfig.json` at all** and has never been typechecked — `vite build` and `vitest` both strip types without checking. Raised as a recommendation by Loops 004 and 009 and deferred until the human authorised the dependency.
+
+A macro-layer spike measured the blast radius rather than guessing: **11 errors under `strict: true`**, and only one in code this project wrote. Seven are Figma-export artifacts (`from 'lucide-react@0.487.0'`), two are implicit-any in an unused component, one is a config question about a `.mjs` outside `src`.
+
+The eleventh is a **real, user-visible bug**: `ByKeyTab` passes `noteNames` that `getChordVoicings` never returns, so **By Key silently loses enharmonic spelling while By Name keeps it** — a D♭ chord reads C#/F/G# in one tab and D♭/F/A♭ in the other. The repo's history shows enharmonics have been fixed twice already; this one shipped invisibly. The loop fixes it at source rather than deleting the dead prop.
+
+TypeScript **7.0.2** is used, not the spike's 5.9.3. Re-measured against this repo, 7.0.2 reaches the *same* 11-error baseline in the same files once `baseUrl` is dropped (TS 7 removed it) and `src/vite-env.d.ts` is added (standard Vite hygiene this repo never had, because it never had TypeScript configured). Pinning backwards would have started a new adoption two majors behind to reproduce a baseline 7.0.2 reproduces anyway.
+
+Its sharpest verifier is the **value-level** enharmonic test: the type error vanishes the moment `noteNames` exists at all, even if every value is wrong. Types prove shape, not correctness.
+
+Worth recording: typechecking would **not** have caught Loop 009's desync — both arrays were `number[]`, correctly typed and wrongly paired.
 
 ## Open decisions
 
@@ -215,6 +238,8 @@ Search across a library is a different product from search within a piece the us
 
 **~~OPEN DECISION 4~~ — RESOLVED: Loop 005 owns it.**
 Cause diagnosed as a v3→v4 migration gap. Its own repair loop, kept out of Loop 002.
+
+**~~OPEN DECISION 7~~ — RESOLVED: TypeScript typechecking adopted.** ADR 0003. `typescript` is the one dependency added; `strict: true`. Loop specs may stop carrying the "the build does not typecheck" note once Loop 010 lands.
 
 **OPEN DECISION 6 — does the Python chord generator have a home?**
 `chordsense/scripts/` holds it, and `chord-selector-app/src/data/comprehensive_chords.csv` is its output — so the two repos were always related. Loop 008 does not port the generator. Whether it should move, stay, or become a third thing is unanswered and blocks nothing.

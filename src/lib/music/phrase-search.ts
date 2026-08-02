@@ -12,8 +12,27 @@ function notesAreEqual(left: readonly number[], right: readonly number[]): boole
   return left.every((note, index) => note === right[index])
 }
 
+// Pitch and staff must move together through dedup and sort, or they
+// desynchronize (loop 009) — every group here spans up to a handful of
+// notes, so pairing them into tuples first and unzipping after is the whole
+// fix. Dedupes on the (pitch, staff) pair, matching the ingestion script.
 function copyGroup(group: NoteGroup): NoteGroup {
-  return { ...group, notes: normalizeNotes(group.notes) }
+  if (!group.staves) {
+    return { ...group, notes: normalizeNotes(group.notes) }
+  }
+
+  const staves = group.staves
+  const pairs = group.notes.map((pitch, index) => ({ pitch, staff: staves[index] }))
+  const uniquePairs = Array.from(
+    new Map(pairs.map((pair) => [`${pair.pitch}:${pair.staff}`, pair] as const)).values(),
+  )
+  uniquePairs.sort((left, right) => left.pitch - right.pitch)
+
+  return {
+    ...group,
+    notes: uniquePairs.map((pair) => pair.pitch),
+    staves: uniquePairs.map((pair) => pair.staff),
+  }
 }
 
 export function findPhraseMatches(

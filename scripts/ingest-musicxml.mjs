@@ -139,6 +139,7 @@ function groupKey(measure, tick) {
 function buildGroups(rawNotes, keyFn) {
   const order = [];
   const byKey = new Map();
+  const seenPairsByKey = new Map();
 
   for (const note of rawNotes) {
     const key = keyFn(note);
@@ -152,8 +153,20 @@ function buildGroups(rawNotes, keyFn) {
         notes: [],
       };
       byKey.set(key, entry);
+      seenPairsByKey.set(key, new Set());
       order.push(entry);
     }
+
+    // Dedupe on the (pitch, staff) pair — two voices doubling the same note
+    // on the same staff is redundant, but the same pitch on two different
+    // staves at once is genuine cross-staff doubling and must survive.
+    const seenPairs = seenPairsByKey.get(key);
+    const pairKey = `${note.midi}:${note.staff}`;
+    if (seenPairs.has(pairKey)) {
+      continue;
+    }
+    seenPairs.add(pairKey);
+
     entry.staves.push(note.staff);
     entry.notes.push(note.midi);
   }

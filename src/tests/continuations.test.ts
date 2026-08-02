@@ -103,6 +103,92 @@ describe('corpus-constrained continuations', () => {
   });
 });
 
+describe('group-wise co-occurrence constraint (Loop 011)', () => {
+  // Section 4 fixture values, measured from the committed artifact at HEAD.
+  // Do not adjust these to match the implementation — the implementation
+  // must match these.
+
+  it('check 5 — empty selection leaves the Loop 006 behaviour unchanged: 55 pitches', () => {
+    const available = possibleContinuations(moonlightSonata, []);
+    expect(available.length).toBe(55);
+  });
+
+  it('check 6 — selecting F#3 (54) leaves exactly the 16 co-occurring pitches', () => {
+    const available = possibleContinuations(moonlightSonata, [], [54]);
+    expect(available).toEqual([30, 32, 33, 35, 36, 37, 42, 44, 45, 47, 48, 61, 66, 68, 72, 73]);
+  });
+
+  it('check 7 — F#4 (66) survives selecting F#3 (54): the cross-staff octave', () => {
+    const available = possibleContinuations(moonlightSonata, [], [54]);
+    expect(available).toContain(66);
+  });
+
+  it('check 8 — constraints compose: prefix [54,66] alone still gives [61]', () => {
+    expect(possibleContinuations(moonlightSonata, [{ notes: [54, 66] }])).toEqual([61]);
+  });
+
+  it('check 8 — constraints compose: F#3 + F#4 selected leaves exactly 8 pitches', () => {
+    const available = possibleContinuations(moonlightSonata, [], [54, 66]);
+    expect(available).toEqual([30, 33, 35, 36, 42, 45, 47, 48]);
+  });
+
+  it('already-selected pitches never reappear as available', () => {
+    expect(possibleContinuations(moonlightSonata, [], [54])).not.toContain(54);
+    expect(possibleContinuations(moonlightSonata, [], [54, 66])).not.toContain(54);
+    expect(possibleContinuations(moonlightSonata, [], [54, 66])).not.toContain(66);
+  });
+
+  it('possibleContinuationsByStaff applies the same constraint as possibleContinuations', () => {
+    const byStaff = possibleContinuationsByStaff(moonlightSonata, [], [54]);
+    expect(byStaff.map((c) => c.pitch)).toEqual([
+      30, 32, 33, 35, 36, 37, 42, 44, 45, 47, 48, 61, 66, 68, 72, 73,
+    ]);
+  });
+
+  it('a two-note prefix that requires a third co-occurring note offers nothing else', () => {
+    // (54,66) is a real group; a third pitch that never joins it is rejected.
+    expect(possibleContinuations(moonlightSonata, [], [54, 66, 64])).toEqual([]);
+  });
+
+  // Check 9 — the property that protects the feature from itself. A
+  // too-aggressive constraint that dims a key belonging to a real group makes
+  // part of the piece unreachable. This runs over every one of the 823
+  // groups in the artifact, not a sample.
+  //
+  // The constraint is stateless — possibleContinuations recomputes from
+  // scratch on every call from whatever currentSelection it is given, it
+  // never accumulates. So for a fixed target pitch, availability can only
+  // shrink as more pitches are added to currentSelection (groupContainsAll
+  // is monotonic: a superset of required pitches can only pass at groups a
+  // subset also passes at). Testing every prefix of each group's natural
+  // note order — ending at "every other pitch of the group selected" —
+  // therefore covers every selection order, not just the one tested.
+  it('check 9 — selecting a real group one pitch at a time never dims a later pitch of that group', () => {
+    let exercised = 0;
+    const failures: Array<{ group: number[]; missing: number; afterSelecting: number[] }> = [];
+
+    for (const group of moonlightSonata) {
+      const notes = Array.from(new Set(group.notes)).sort((left, right) => left - right);
+      exercised += 1;
+
+      for (let selectedCount = 0; selectedCount < notes.length; selectedCount += 1) {
+        const selectedSoFar = notes.slice(0, selectedCount);
+        const stillToSelect = notes.slice(selectedCount);
+        const available = possibleContinuations(moonlightSonata, [], selectedSoFar);
+
+        for (const laterPitch of stillToSelect) {
+          if (!available.includes(laterPitch)) {
+            failures.push({ group: notes, missing: laterPitch, afterSelecting: selectedSoFar });
+          }
+        }
+      }
+    }
+
+    expect(exercised).toBe(823);
+    expect(failures).toEqual([]);
+  });
+});
+
 describe('capture seam', () => {
   it('toggles a key on and off for the row it was captured from', () => {
     const first = applyCapture([], { source: 'pointer', staff: 2, pitches: [54] });

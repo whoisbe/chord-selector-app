@@ -19,6 +19,16 @@ import { pitchToLabel } from '../../lib/music/pitch-label';
 
 export type KeyState = 'entered' | 'available' | 'unavailable';
 
+// Why a key is unavailable, distinguished in the accessible name only (Loop
+// 011, Section 6). The two constraints compose but read as one dimmed
+// treatment visually — a sighted user just needs "don't press this"; a
+// screen-reader user gets the specific reason for free, at no styling cost.
+// 'sequence' — Loop 006's original reason: this pitch cannot follow the
+// committed phrase at all, regardless of what else is selected.
+// 'cooccurrence' — Loop 011's new reason: this pitch can follow the phrase,
+// but never together with the pitch(es) already chosen for this group.
+export type UnavailableReason = 'sequence' | 'cooccurrence';
+
 export type KeyboardRow = {
   staff: StaffRow;
   // "Upper row" / "Lower row" — part of every key's accessible name.
@@ -36,6 +46,10 @@ type PhraseKeyboardProps = {
   rows: readonly KeyboardRow[];
   selection: readonly SelectedKey[];
   availableByStaff: ReadonlyMap<StaffRow, ReadonlySet<number>>;
+  // Pitches that pass the sequence constraint but are dimmed solely because
+  // they never co-occur with the current selection. Empty for every staff
+  // while the current group is empty — see UnavailableReason.
+  blockedByCoOccurrenceByStaff: ReadonlyMap<StaffRow, ReadonlySet<number>>;
   onCapture: (capture: PitchCapture) => void;
 };
 
@@ -79,9 +93,21 @@ function keyStyle(key: KeyGeometry, state: KeyState, inExtent: boolean) {
   };
 }
 
-function accessibleName(pitch: number, row: KeyboardRow, state: KeyState, inExtent: boolean): string {
+function accessibleName(
+  pitch: number,
+  row: KeyboardRow,
+  state: KeyState,
+  inExtent: boolean,
+  unavailableReason: UnavailableReason | undefined,
+): string {
   const stateWord =
-    state === 'entered' ? 'entered' : state === 'available' ? 'available next' : 'not available next';
+    state === 'entered'
+      ? 'entered'
+      : state === 'available'
+        ? 'available next'
+        : unavailableReason === 'cooccurrence'
+          ? 'does not occur together with the current selection'
+          : 'not available next';
   const extentWord = inExtent ? '' : `, outside staff ${row.staff} range`;
 
   return `${pitchToLabel(pitch)}, ${row.title}, ${stateWord}${extentWord}`;
@@ -92,12 +118,14 @@ function KeyboardRowKeys({
   row,
   selection,
   available,
+  blockedByCoOccurrence,
   onCapture,
 }: {
   keys: readonly KeyGeometry[];
   row: KeyboardRow;
   selection: readonly SelectedKey[];
   available: ReadonlySet<number>;
+  blockedByCoOccurrence: ReadonlySet<number>;
   onCapture: (capture: PitchCapture) => void;
 }) {
   const width = keyboardWidth(keys);
@@ -122,8 +150,23 @@ function KeyboardRowKeys({
         const inExtent = row.extent
           ? key.pitch >= row.extent.minPitch && key.pitch <= row.extent.maxPitch
           : true;
-        const name = accessibleName(key.pitch, row, state, inExtent);
+        const unavailableReason: UnavailableReason | undefined =
+          state === 'unavailable'
+            ? blockedByCoOccurrence.has(key.pitch)
+              ? 'cooccurrence'
+              : 'sequence'
+            : undefined;
+        const name = accessibleName(key.pitch, row, state, inExtent, unavailableReason);
         const showLabel = !key.isBlack && (isOctaveLandmark(key.pitch) || entered);
+        // Loop 006 kept every key operable — including sequence-blocked ones
+        // — so dimming stayed informative rather than a hard block, and the
+        // accessibility tree stayed at full size (no `disabled`). Loop 011
+        // narrows that only for the dead end it introduces: a co-occurrence
+        // block means no group containing it can ever match, so activating
+        // it is a no-op rather than a click that silently builds garbage.
+        // The button stays focusable and its accessible name stays truthful
+        // either way.
+        const isDeadEnd = unavailableReason === 'cooccurrence';
 
         return (
           <button
@@ -135,7 +178,13 @@ function KeyboardRowKeys({
             data-pitch={key.pitch}
             data-staff={row.staff}
             data-key-state={state}
-            onClick={() => onCapture({ source: 'pointer', staff: row.staff, pitches: [key.pitch] })}
+            data-unavailable-reason={unavailableReason}
+            onClick={() => {
+              if (isDeadEnd) {
+                return;
+              }
+              onCapture({ source: 'pointer', staff: row.staff, pitches: [key.pitch] });
+            }}
             className="phrase-key"
             style={{ ...keyStyle(key, state, inExtent), zIndex: key.isBlack ? 20 : 10 }}
           >
@@ -154,6 +203,7 @@ export function PhraseKeyboard({
   rows,
   selection,
   availableByStaff,
+  blockedByCoOccurrenceByStaff,
   onCapture,
 }: PhraseKeyboardProps) {
   const emptySet: ReadonlySet<number> = new Set<number>();
@@ -174,6 +224,7 @@ export function PhraseKeyboard({
               row={row}
               selection={selection}
               available={availableByStaff.get(row.staff) ?? emptySet}
+              blockedByCoOccurrence={blockedByCoOccurrenceByStaff.get(row.staff) ?? emptySet}
               onCapture={onCapture}
             />
           </div>

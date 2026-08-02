@@ -7,6 +7,15 @@
 // contiguous groups, exact group equality, exact register. This module reuses
 // that module's normaliser rather than restating it, so the keys that light up
 // can never disagree with the search that follows.
+//
+// Two constraints compose (Loop 011). The prefix narrows which *groups* can
+// follow — the sequence constraint, unchanged since Loop 006. An optional
+// currentSelection then narrows *within* those groups to the ones that
+// actually contain every pitch already chosen for the group being assembled
+// — the co-occurrence constraint. Without it, a user could pick keys one at a
+// time that individually continue the phrase but together form a chord that
+// occurs nowhere in the piece. Pitches already in currentSelection are
+// excluded from the result — they are entered, not available.
 
 import { normalizeNotes } from './phrase-search'
 import type { NoteGroup } from './types'
@@ -53,18 +62,40 @@ function hasEmptyGroup(prefix: readonly PrefixGroup[]): boolean {
   return prefix.some((group) => group.notes.length === 0)
 }
 
+// The co-occurrence constraint: a continuation group can only extend the
+// group currently being assembled if it contains every pitch already chosen
+// for that group, at the same register. This is what stops a user from
+// building a chord that exists nowhere in the piece — see Loop 011.
+function groupContainsAll(groupNotes: readonly number[], required: readonly number[]): boolean {
+  if (required.length === 0) {
+    return true
+  }
+
+  const notes = new Set(groupNotes)
+  return required.every((pitch) => notes.has(pitch))
+}
+
 export function possibleContinuations(
   stream: readonly NoteGroup[],
   prefix: readonly PrefixGroup[],
+  currentSelection: readonly number[] = [],
 ): number[] {
   if (hasEmptyGroup(prefix)) {
     return []
   }
 
+  const selected = new Set(currentSelection)
   const pitches = new Set<number>()
   for (const index of continuationIndices(stream, prefix)) {
-    for (const pitch of stream[index].notes) {
-      pitches.add(pitch)
+    const group = stream[index]
+    if (!groupContainsAll(group.notes, currentSelection)) {
+      continue
+    }
+
+    for (const pitch of group.notes) {
+      if (!selected.has(pitch)) {
+        pitches.add(pitch)
+      }
     }
   }
 
@@ -74,16 +105,26 @@ export function possibleContinuations(
 export function possibleContinuationsByStaff(
   stream: readonly NoteGroup[],
   prefix: readonly PrefixGroup[],
+  currentSelection: readonly number[] = [],
 ): StaffContinuation[] {
   if (hasEmptyGroup(prefix)) {
     return []
   }
 
+  const selected = new Set(currentSelection)
   const byPitch = new Map<number, Set<number>>()
 
   for (const index of continuationIndices(stream, prefix)) {
     const group = stream[index]
+    if (!groupContainsAll(group.notes, currentSelection)) {
+      continue
+    }
+
     group.notes.forEach((pitch, position) => {
+      if (selected.has(pitch)) {
+        return
+      }
+
       let staves = byPitch.get(pitch)
       if (!staves) {
         staves = new Set<number>()

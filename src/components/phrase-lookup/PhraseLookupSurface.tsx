@@ -21,6 +21,7 @@ import {
   staffPitchRanges,
   streamPitchRange,
   type PitchRange,
+  type StaffContinuation,
 } from '../../lib/music/continuations';
 import { keyLayout } from '../../lib/music/keyboard';
 import { findPhraseMatches } from '../../lib/music/phrase-search';
@@ -41,6 +42,29 @@ function formatBeat(beat: number): string {
 
 function formatGroup(notes: readonly number[]): string {
   return `[${notes.map(pitchToLabel).join('+')}]`;
+}
+
+// StaffContinuation entries carry no staff data for a piece that carries
+// none itself (ADR 0002) — that reads as "light on both rows", same as the
+// availability lookup this backs.
+function toStaffPitchMap(continuations: readonly StaffContinuation[]): Map<StaffRow, Set<number>> {
+  const byStaff = new Map<StaffRow, Set<number>>([
+    [1, new Set<number>()],
+    [2, new Set<number>()],
+  ]);
+
+  for (const continuation of continuations) {
+    const staves: StaffRow[] =
+      continuation.staves.length === 0
+        ? [1, 2]
+        : continuation.staves.filter((staff): staff is StaffRow => staff === 1 || staff === 2);
+
+    for (const staff of staves) {
+      byStaff.get(staff)?.add(continuation.pitch);
+    }
+  }
+
+  return byStaff;
 }
 
 function rangeCaption(staff: StaffRow): string {
@@ -109,26 +133,56 @@ export function PhraseLookupSurface() {
     // searchNonce lets the fallback control force a fresh search.
   }, [prefix, searchNonce]);
 
-  const availableByStaff = useMemo(() => {
-    const byStaff = new Map<StaffRow, Set<number>>([
+  const currentSelectionPitches = useMemo(() => selectionPitches(selection), [selection]);
+
+  // Sequence-only availability — Loop 006's original constraint, ignoring
+  // whatever is already picked for the group in progress. Kept separately
+  // so a key blocked by co-occurrence can be told apart from one blocked by
+  // sequence alone (Section 6): the same call with an empty selection is
+  // what Loop 006 always computed.
+  const sequenceOnlyByStaff = useMemo(
+    () => toStaffPitchMap(possibleContinuationsByStaff(moonlightSonata, prefix)),
+    [prefix],
+  );
+
+  // Both constraints composed — the group being assembled must actually
+  // occur, not just be able to follow the committed phrase.
+  const availableByStaff = useMemo(
+    () =>
+      toStaffPitchMap(
+        possibleContinuationsByStaff(moonlightSonata, prefix, currentSelectionPitches),
+      ),
+    [prefix, currentSelectionPitches],
+  );
+
+  // Sequence-continuable but excluded once co-occurrence is applied: a dead
+  // end that exists only because of what is already selected, not because
+  // it can never follow the phrase. Empty whenever nothing is selected yet,
+  // which is what keeps the empty-selection behaviour identical to Loop 006.
+  const blockedByCoOccurrenceByStaff = useMemo(() => {
+    const blocked = new Map<StaffRow, Set<number>>([
       [1, new Set<number>()],
       [2, new Set<number>()],
     ]);
 
-    for (const continuation of possibleContinuationsByStaff(moonlightSonata, prefix)) {
-      // No staff data means the piece cannot say which hand — light both.
-      const staves: StaffRow[] =
-        continuation.staves.length === 0
-          ? [1, 2]
-          : continuation.staves.filter((staff): staff is StaffRow => staff === 1 || staff === 2);
+    if (currentSelectionPitches.length === 0) {
+      return blocked;
+    }
 
-      for (const staff of staves) {
-        byStaff.get(staff)?.add(continuation.pitch);
+    for (const staff of [1, 2] as StaffRow[]) {
+      const sequenceSet = sequenceOnlyByStaff.get(staff)!;
+      const availableSet = availableByStaff.get(staff)!;
+      const blockedSet = blocked.get(staff)!;
+
+      for (const pitch of sequenceSet) {
+        if (!availableSet.has(pitch) && !currentSelectionPitches.includes(pitch)) {
+          blockedSet.add(pitch);
+        }
       }
     }
 
-    return byStaff;
-  }, [prefix]);
+    return blocked;
+  }, [sequenceOnlyByStaff, availableByStaff, currentSelectionPitches]);
 
   const availableCount = availableByStaff.get(1)!.size + availableByStaff.get(2)!.size;
 
@@ -174,7 +228,8 @@ export function PhraseLookupSurface() {
         <h2 className="text-lg font-medium">Phrase lookup</h2>
         <p className="text-muted-foreground text-sm">
           Click where your hands went. Highlighted keys are the notes that can actually come next
-          in this piece; dimmed keys cannot follow what you have entered so far.
+          in this piece; dimmed keys cannot follow what you have entered so far, whether alone or
+          together with what you have already picked for the current chord.
         </p>
         <p className="text-muted-foreground text-xs">
           Searching {MOONLIGHT_SONATA_NAME} — {moonlightSonata.length} onsets ingested from
@@ -187,6 +242,7 @@ export function PhraseLookupSurface() {
         rows={rows}
         selection={selection}
         availableByStaff={availableByStaff}
+        blockedByCoOccurrenceByStaff={blockedByCoOccurrenceByStaff}
         onCapture={handleCapture}
       />
 

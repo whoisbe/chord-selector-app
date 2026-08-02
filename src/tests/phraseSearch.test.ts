@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { phraseLookupDemo } from '../data/pieces/phrase-lookup-demo';
+import { moonlightSonata } from '../data/pieces/moonlight-sonata';
 import { findPhraseMatches } from '../lib/music/phrase-search';
 import { pitchToLabel } from '../lib/music/pitch-label';
 import type { NoteGroup, PhraseQuery } from '../lib/music/types';
@@ -62,15 +63,22 @@ describe('phrase search', () => {
     expect(findPhraseMatches(piece, query)).toEqual([]);
   });
 
-  it('hand selection prevents cross-hand matches', () => {
-    const leftQuery: PhraseQuery = { ...rememberedQuery, hand: 'left' };
+  // ADR 0002 supersedes Loop 001's "hand selection prevents cross-hand
+  // matches": search no longer filters by hand/staff. This replaces it with
+  // the motivating case — the founding query is an F# octave split across
+  // both staves (unfindable in either staff alone; see
+  // musicxmlIngestion.test.ts for the staff-split control) followed by C#4
+  // and E4, found once in the real merged onset stream at measure 12 beat 4.
+  it('a query spanning both staves is found in the merged stream without a hand filter', () => {
+    const crossStaffQuery: PhraseQuery = {
+      groups: [{ notes: [54, 66] }, { notes: [61] }, { notes: [64] }],
+    };
 
-    expect(
-      findPhraseMatches(phraseLookupDemo, rememberedQuery).map((match) => match.measure),
-    ).toEqual([12, 27]);
-    expect(
-      findPhraseMatches(phraseLookupDemo, leftQuery).map((match) => match.measure),
-    ).toEqual([20]);
+    const matches = findPhraseMatches(moonlightSonata, crossStaffQuery);
+
+    expect(matches.length).toBe(1);
+    expect(matches[0].measure).toBe(12);
+    expect(matches[0].beat).toBe(4);
   });
 
   it('empty queries and queries with an empty group return no matches', () => {

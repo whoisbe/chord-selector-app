@@ -13,12 +13,7 @@ function notesAreEqual(left: readonly number[], right: readonly number[]): boole
 }
 
 function copyGroup(group: NoteGroup): NoteGroup {
-  return {
-    measure: group.measure,
-    beat: group.beat,
-    hand: group.hand,
-    notes: normalizeNotes(group.notes),
-  }
+  return { ...group, notes: normalizeNotes(group.notes) }
 }
 
 export function findPhraseMatches(
@@ -30,26 +25,31 @@ export function findPhraseMatches(
   }
 
   const queryNotes = query.groups.map((group) => normalizeNotes(group.notes))
-  const handGroups = piece.filter((group) => group.hand === query.hand)
+  // ADR 0002: hand/staff is not a search filter for the merged onset stream.
+  // `query.hand` is honoured only when present, for Loop 001's hand-authored
+  // fixture — real pieces search the merged stream as given.
+  const searchGroups = query.hand
+    ? piece.filter((group) => group.hand === query.hand)
+    : piece
   const matches: PhraseMatch[] = []
 
-  for (let start = 0; start <= handGroups.length - queryNotes.length; start += 1) {
+  for (let start = 0; start <= searchGroups.length - queryNotes.length; start += 1) {
     const isMatch = queryNotes.every((notes, offset) =>
-      notesAreEqual(notes, normalizeNotes(handGroups[start + offset].notes)),
+      notesAreEqual(notes, normalizeNotes(searchGroups[start + offset].notes)),
     )
 
     if (!isMatch) {
       continue
     }
 
-    const firstGroup = handGroups[start]
+    const firstGroup = searchGroups[start]
     const matchEnd = start + queryNotes.length
 
     matches.push({
       measure: firstGroup.measure,
       beat: firstGroup.beat,
-      matchedGroups: handGroups.slice(start, matchEnd).map(copyGroup),
-      followingGroups: handGroups.slice(matchEnd, matchEnd + 3).map(copyGroup),
+      matchedGroups: searchGroups.slice(start, matchEnd).map(copyGroup),
+      followingGroups: searchGroups.slice(matchEnd, matchEnd + 3).map(copyGroup),
     })
   }
 

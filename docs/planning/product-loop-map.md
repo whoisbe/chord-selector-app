@@ -1,11 +1,11 @@
 # Chordsense Product Loop Map
 
-Status date: 2026-08-02
+Status date: 2026-08-02 (Loop 008 accepted)
 Depth: light and directional. This file is the navigational index. Deep, executable definitions live in `docs/planning/loops/`.
 
 ## Repository
 
-**Home: `whoisbe/chord-selector-app`, branch `phrase-lookup`.** Vite 6 + React 18 + Radix + Tailwind + vitest.
+**Home: `whoisbe/chord-selector-app`, branch `phrase-lookup`.** Vite 6 + React 18 + Radix + Tailwind + vitest. **This repo is now canonical** — these docs live here as of Loop 008.
 
 Loops 001 and 002 were executed in `whoisbe/chordsense` — a different application (Next.js 15 App Router, MDX blog), cloned by mistake. Nothing was ever pushed there. Loop 008 ports the framework-independent work across; `chordsense` keeps its own life as a blog project.
 
@@ -80,10 +80,11 @@ flowchart LR
 | [001 phrase lookup search vertical slice](loops/001-phrase-lookup-search-vertical-slice.md) | Completion | **DONE** | — |
 | [002 repo hygiene and first commit](loops/002-repo-hygiene-and-first-commit.md) | Governance | **DONE** | — |
 | ~~003 score data source decision~~ | Architecture-conformance | **superseded** — spike run inline, see ADR 0001 | — |
-| [**008 port to chord-selector-app**](loops/008-port-to-chord-selector-app.md) | Completion | **engineered, NEXT — handed to Claude Code** | — |
-| [004 MusicXML ingestion](loops/004-musicxml-ingestion.md) | Completion | engineered, **needs path/build revision after 008** | 008 |
+| [008 port to chord-selector-app](loops/008-port-to-chord-selector-app.md) | Completion | **DONE** | — |
+| [004 MusicXML ingestion](loops/004-musicxml-ingestion.md) | Completion | **DONE** (accepted; defect found in review → 009) | — |
+| [009 staff/pitch pairing repair](loops/009-staff-pairing-repair.md) | Repair | **NEXT — handed to Claude Code** | — |
 | ~~005 Tailwind v3→v4 repair~~ | Repair | **dead** — defect was chordsense-only | — |
-| [006 two-row virtual keyboard input](loops/006-two-row-keyboard-input.md) | Completion | engineered, **cheaper after 008** | 008, 004 |
+| [006 two-row virtual keyboard input](loops/006-two-row-keyboard-input.md) | Completion | engineered, **spec needs revision against KeyboardDiagram.tsx** | 004 |
 | 007 shape matching and eval harness | Eval | directional | 004 |
 
 ### 001 phrase lookup search vertical slice — DONE
@@ -117,15 +118,44 @@ Specced as a three-way spike. Never run as a coding loop: the user supplied `dat
 
 Running the spike to confirm a foregone conclusion would have been ceremony. The spec file stays for the record, marked superseded.
 
-### 004 MusicXML ingestion — engineered, next
+### 004 MusicXML ingestion — DONE
+
+Executor: Claude Code. Terminal state `DONE`, **zero repair attempts**, all 15 checks passing.
+
+Macro-layer re-verification went further than re-reading: the committed artifact was compared event-for-event against an **independent parse of the same file** written separately by the macro layer. All **823 events matched on measure, tick, and pitch set — zero structural disagreements.** Every target number confirmed: 69 measures, 1169 pitched notes, 0 inferred staves, MIDI 29–87, 55 distinct pitches, 719+219=938 staff-split. Founding query returns exactly 1 match at m12 beat 4; the staff-split control returns 0 in each staff alone. The superseded hand test was properly replaced in-slot with a supersession comment, count still 10, the other nine untouched.
+
+**A defect was found in review, in a facet no check covered** — see Loop 009. It does not invalidate this loop's evidence: the parse is correct, and the defect lives in how `copyGroup` carries the new `staves` array. Loop 004 is accepted; the repair is its own loop so this evidence record stays clean.
+
+Also uncommitted at hand-back, because this loop's handoff omitted a commit task — a macro-layer omission, not an executor failure. Loop 009 commits it.
+
+Retargeted after Loop 008. Target numbers and evidence unchanged; paths, tooling, and verifier revised against what `chord-selector-app` actually provides.
+
+Two environment findings shaped it:
+
+- **`npm run build` does not typecheck.** It is `vite build`, and esbuild strips types without checking them. `typescript` is not even a declared dependency. In chordsense, `next build` typechecked — that is exactly what caught Loop 001's ES5 spread bug. That safety net no longer exists, so assertions must live in vitest and a green build must not be read as type safety. Raised as a recommendation in the spec, deliberately not acted on, because adding `tsc` means adding a dependency.
+- **XML and ZIP are solvable with what is already installed.** `jsdom ^27.1.0` is a declared devDependency and supplies `DOMParser`; Node has no built-in XML parser. The `.mxl` is extracted once with the `unzip` CLI and the plain XML committed, avoiding both a ZIP library and the transitive-only `fflate`. No new dependency.
+
+Also new: check 14 requires the ingestion artifact to regenerate byte-identically, because a committed blob nobody can reproduce is a liability. And check 13 keeps jsdom out of the shipped bundle — it belongs to the build script only.
+
+This is the loop where **ADR 0002 lands**: the single-hand filter is removed. Loop 008 ported it unchanged precisely so the removal shows up as this loop's diff.
+
+
 
 Moves the real 69-measure movement from `.mxl` to the merged onset stream. The algorithm is already proven by the macro-layer spike, so the loop reimplements a known-good walk in TypeScript rather than discovering one, and the spike's numbers become the acceptance targets: 69 measures, 1169 pitched notes, 823 merged events, range F1–D#6.
 
 Its decisive check is the founding query — `[F#3+F#4] → [C#4] → [E4]` must return exactly one match at measure 12 beat 4 — paired with a control proving each staff alone returns zero. A parser that gets the right answer for the wrong reason fails.
 
-### 008 port to chord-selector-app — NEXT
+### 008 port to chord-selector-app — DONE
 
-Executor: Claude Code. The repo was cloned wrong; the intended home is `whoisbe/chord-selector-app`. Not a wrong clone of one project — a different application, so repointing the remote would not have worked.
+Executor: Claude Code. Terminal state `DONE`, zero repair attempts. Three commits on `phrase-lookup`, unpushed.
+
+Macro-layer re-verification, run independently rather than read from the self-report: all three `lib/music` modules **byte-identical**; all **17 docs byte-identical**; the ten test cases present with names matching the source verbatim, in order; `src/lib/music/` free of React/DOM/`node:`; `package.json` and `package-lock.json` untouched; chordsense still `ahead 2` on the same two commits. Browser checks 11 and 12 closed by the macro layer through Chrome: the Phrase Lookup tab renders 2 matches at measures 12 and 27 with correct following-groups, By Key renders chord chips and keyboard diagrams, By Name resolves `Cmaj7 (C, E, G, B)`.
+
+The diff is **purely additive — 8 files, 316 insertions, 0 deletions.** No pre-existing component was modified beyond the 5-line `App.tsx` and 7-line `Header.tsx` wiring the spec allowed.
+
+Two things it got right that were easy to get wrong. It ported `hand: 'right'` unchanged instead of "helpfully" applying ADR 0002 early — that change belongs to Loop 004 and should show up as its diff. And it found chordsense's tree dirty at Task 1 (macro-layer doc edits in progress) and proceeded correctly, because 008 gates on `ahead 2`, not tree cleanliness — it read the actual stop rule rather than importing Loop 002's.
+
+Original spec follows. The repo was cloned wrong; the intended home is `whoisbe/chord-selector-app`. Not a wrong clone of one project — a different application, so repointing the remote would not have worked.
 
 Ports verbatim: the three pure `lib/music` modules (102 lines), all of `docs/`, both ADRs, the fixture, the `.mxl`. Converts the ten tests from `node:test` to vitest. Adds a deliberately throwaway smoke tab so the port is verifiable end to end. Discards `app/lookup/page.tsx` and `PhraseLookup.tsx`, which Loop 006 was replacing anyway.
 
@@ -137,7 +167,7 @@ The v3 `@tailwind` directives against an installed v4 were a `chordsense` defect
 
 ### 006 two-row virtual keyboard input — engineered, and cheaper than specced
 
-**`src/components/KeyboardDiagram.tsx` already exists in the destination repo** — 215 lines, MIDI-based at `startNote = 60`, the same `C4 = 60` convention we froze independently, with the exact white pattern `[0,2,4,5,7,9,11]` and black `[1,3,6,8,10]` the spec names, plus enharmonic labels and active-note highlighting.
+**`src/components/KeyboardDiagram.tsx` already exists and is confirmed working in the browser** — the By Key tab renders Root / 1st Inv / 2nd Inv diagrams with highlighted keys and note labels under them. 215 lines, MIDI-based at `startNote = 60`, the same `C4 = 60` convention we froze independently, with the exact white pattern `[0,2,4,5,7,9,11]` and black `[1,3,6,8,10]` the spec names, plus enharmonic labels and active-note highlighting.
 
 It is display-only: `notes: number[]` in, render out, no click handling. So this loop becomes *extend an existing component* — add input, a second row, a wider range, continuation dimming — rather than build one. The spec should be revised against it after 008 lands.
 
@@ -166,6 +196,14 @@ Its case is already made. The user's remembered phrase was correct in shape but 
 Open axes to evaluate: interval-sequence invariance, subset matching for forgotten inner voices, gap tolerance, black/white contour, and **adjacent-physical-key** rather than ±1 semitone — because if input is spatial, the error model should be spatial. `E→F` is one semitone and adjacent; `C→D` is two semitones and adjacent.
 
 The moment anything relaxes, results must be **ranked**, not just found. That is the real architectural change hiding in this loop.
+
+### 009 staff/pitch pairing repair — NEXT
+
+`copyGroup` sorts and deduplicates `notes` while spreading the parallel `staves` array through unchanged, so the two desynchronize in every group the search returns. **115 of 823 groups span more than one staff, and all 115 mispair** — including the m12 beat 4 founding match, where F#3 and F#4 have their staves inverted.
+
+Latent today, because nothing reads `staves` yet. That is exactly why all 15 of Loop 004's checks passed honestly. But ADR 0002 retains staff for display and ranking, and Loop 006 renders two rows keyed on staff — it would place notes on the wrong row, silently, in the very cross-staff case ADR 0002 exists to serve.
+
+The spec fixes the invariant rather than the function, deduplicates on `(pitch, staff)` pairs rather than pitch alone, and folds in Loop 004's missing commit.
 
 ## Open decisions
 
@@ -199,7 +237,7 @@ These are settled and should not be relitigated without an ADR:
 
 ## Methodology notes
 
-Executor per loop is chosen at handoff time and recorded in the loop spec. Loop 001 ran on Codex; Loop 002 is assigned to Codex. Loops 004, 005, and 006 are engineered and unassigned.
+Executor per loop is chosen at handoff time and recorded in the loop spec. Loop 001 ran on Codex; Loop 002 is assigned to Codex. Loops 008, 004, and 009 ran or run on Claude Code; 001 and 002 on Codex. Loop 006 is engineered and unassigned.
 
 Loop 001's `BLOCKED` outcome produced a durable learning worth carrying into every future handoff: **a verifier that requires a capability the executor's environment may not have is a verifier that can strand an otherwise complete loop.** Interaction checks should either be assigned to an executor with a confirmed browser, or be explicitly designated as human-verified steps in the handoff. Loop 002 Task 4 writes this into `CLAUDE.md` and `AGENTS.md`.
 

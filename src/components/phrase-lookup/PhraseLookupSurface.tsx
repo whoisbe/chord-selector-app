@@ -1,9 +1,12 @@
-// Phrase lookup: point at where your hands went, across two rows, and the
+// Phrase lookup: click the notes of one onset on one keyboard, and the
 // keyboard shows what can come next.
 //
-// Rows are an input and display affordance only. The query that reaches
-// findPhraseMatches carries no staff at all (ADR 0002) — a group selected as
-// F#3 on the lower row plus F#4 on the upper row is simply [54, 66].
+// Loop 012 removed staff from input entirely. Staff was never part of the
+// query (ADR 0002) — a group selected as F#3 plus F#4 is simply [54, 66],
+// whether the two rows this used to take existed or not. Two rows only ever
+// encoded a transcription detail (which staff a note was engraved on) that
+// does not match which hand plays it; asking the user to answer that
+// question bought nothing and, at measure 13 beat 1, actively misled.
 
 import { useCallback, useMemo, useState } from 'react';
 
@@ -14,27 +17,24 @@ import {
   selectionPitches,
   type PitchCapture,
   type SelectedKey,
-  type StaffRow,
 } from '../../lib/music/capture';
 import {
-  possibleContinuationsByStaff,
-  staffPitchRanges,
+  containmentCount,
+  possibleContinuations,
   streamPitchRange,
   type PitchRange,
-  type StaffContinuation,
 } from '../../lib/music/continuations';
 import { keyLayout } from '../../lib/music/keyboard';
 import { findPhraseMatches } from '../../lib/music/phrase-search';
 import { pitchToLabel } from '../../lib/music/pitch-label';
 import type { NoteGroup, PhraseQuery } from '../../lib/music/types';
-import { PhraseKeyboard, type KeyboardRow } from './PhraseKeyboard';
+import { PhraseKeyboard } from './PhraseKeyboard';
 
 // Exact matching on a one-note prefix hits many places; the count is the
 // honest signal and the list is only a sample of it.
 const MAX_RENDERED_RESULTS = 20;
 
 const FULL_RANGE: PitchRange = streamPitchRange(moonlightSonata) ?? { minPitch: 29, maxPitch: 87 };
-const STAFF_RANGES = staffPitchRanges(moonlightSonata);
 
 function formatBeat(beat: number): string {
   return Number.isInteger(beat) ? String(beat) : beat.toFixed(2);
@@ -44,43 +44,13 @@ function formatGroup(notes: readonly number[]): string {
   return `[${notes.map(pitchToLabel).join('+')}]`;
 }
 
-// StaffContinuation entries carry no staff data for a piece that carries
-// none itself (ADR 0002) — that reads as "light on both rows", same as the
-// availability lookup this backs.
-function toStaffPitchMap(continuations: readonly StaffContinuation[]): Map<StaffRow, Set<number>> {
-  const byStaff = new Map<StaffRow, Set<number>>([
-    [1, new Set<number>()],
-    [2, new Set<number>()],
-  ]);
-
-  for (const continuation of continuations) {
-    const staves: StaffRow[] =
-      continuation.staves.length === 0
-        ? [1, 2]
-        : continuation.staves.filter((staff): staff is StaffRow => staff === 1 || staff === 2);
-
-    for (const staff of staves) {
-      byStaff.get(staff)?.add(continuation.pitch);
-    }
-  }
-
-  return byStaff;
-}
-
-function rangeCaption(staff: StaffRow): string {
-  const range = STAFF_RANGES.get(staff);
-  if (!range) {
-    return 'full range';
-  }
-
-  return `staff ${staff} · ${pitchToLabel(range.minPitch)}–${pitchToLabel(range.maxPitch)}`;
-}
-
-// A matched group drawn across the two rows: which notes each hand takes is
-// what you need in order to actually play it.
+// A matched group drawn by staff: which notes each hand takes is what you
+// need in order to actually play it. This is a results-rendering facet only
+// (Loop 013 rebuilds it as strips) — it has nothing to do with how the group
+// was entered, which is pitch-only since this loop.
 function GroupByStaff({ group }: { group: NoteGroup }) {
-  const rows: Array<{ staff: StaffRow; notes: number[] }> = [1, 2].map((staff) => ({
-    staff: staff as StaffRow,
+  const rows: Array<{ staff: 1 | 2; notes: number[] }> = [1, 2].map((staff) => ({
+    staff: staff as 1 | 2,
     notes: group.notes.filter((_, index) => group.staves?.[index] === staff),
   }));
   const unattributed = group.notes.filter((_, index) => group.staves?.[index] === undefined);
@@ -110,14 +80,6 @@ export function PhraseLookupSurface() {
 
   const keys = useMemo(() => keyLayout(FULL_RANGE.minPitch, FULL_RANGE.maxPitch), []);
 
-  const rows: KeyboardRow[] = useMemo(
-    () => [
-      { staff: 1, title: 'Upper row', caption: rangeCaption(1), extent: STAFF_RANGES.get(1) },
-      { staff: 2, title: 'Lower row', caption: rangeCaption(2), extent: STAFF_RANGES.get(2) },
-    ],
-    [],
-  );
-
   const prefix = useMemo(
     () => committed.map((group) => ({ notes: selectionPitches(group) })),
     [committed],
@@ -136,55 +98,55 @@ export function PhraseLookupSurface() {
   const currentSelectionPitches = useMemo(() => selectionPitches(selection), [selection]);
 
   // Sequence-only availability — Loop 006's original constraint, ignoring
-  // whatever is already picked for the group in progress. Kept separately
-  // so a key blocked by co-occurrence can be told apart from one blocked by
-  // sequence alone (Section 6): the same call with an empty selection is
-  // what Loop 006 always computed.
-  const sequenceOnlyByStaff = useMemo(
-    () => toStaffPitchMap(possibleContinuationsByStaff(moonlightSonata, prefix)),
+  // whatever is already picked for the group in progress. Kept separately so
+  // a key blocked by co-occurrence can be told apart from one blocked by
+  // sequence alone (Section 6): the same call with an empty selection is what
+  // Loop 006 always computed.
+  const sequenceOnly = useMemo(
+    () => new Set(possibleContinuations(moonlightSonata, prefix)),
     [prefix],
   );
 
   // Both constraints composed — the group being assembled must actually
   // occur, not just be able to follow the committed phrase.
-  const availableByStaff = useMemo(
-    () =>
-      toStaffPitchMap(
-        possibleContinuationsByStaff(moonlightSonata, prefix, currentSelectionPitches),
-      ),
+  const available = useMemo(
+    () => new Set(possibleContinuations(moonlightSonata, prefix, currentSelectionPitches)),
     [prefix, currentSelectionPitches],
   );
 
   // Sequence-continuable but excluded once co-occurrence is applied: a dead
-  // end that exists only because of what is already selected, not because
-  // it can never follow the phrase. Empty whenever nothing is selected yet,
+  // end that exists only because of what is already selected, not because it
+  // can never follow the phrase. Empty whenever nothing is selected yet,
   // which is what keeps the empty-selection behaviour identical to Loop 006.
-  const blockedByCoOccurrenceByStaff = useMemo(() => {
-    const blocked = new Map<StaffRow, Set<number>>([
-      [1, new Set<number>()],
-      [2, new Set<number>()],
-    ]);
+  const blockedByCoOccurrence = useMemo(() => {
+    const blocked = new Set<number>();
 
     if (currentSelectionPitches.length === 0) {
       return blocked;
     }
 
-    for (const staff of [1, 2] as StaffRow[]) {
-      const sequenceSet = sequenceOnlyByStaff.get(staff)!;
-      const availableSet = availableByStaff.get(staff)!;
-      const blockedSet = blocked.get(staff)!;
-
-      for (const pitch of sequenceSet) {
-        if (!availableSet.has(pitch) && !currentSelectionPitches.includes(pitch)) {
-          blockedSet.add(pitch);
-        }
+    for (const pitch of sequenceOnly) {
+      if (!available.has(pitch) && !currentSelectionPitches.includes(pitch)) {
+        blocked.add(pitch);
       }
     }
 
     return blocked;
-  }, [sequenceOnlyByStaff, availableByStaff, currentSelectionPitches]);
+  }, [sequenceOnly, available, currentSelectionPitches]);
 
-  const availableCount = availableByStaff.get(1)!.size + availableByStaff.get(2)!.size;
+  const availableCount = available.size;
+
+  // Loop 012: how many onsets in the whole piece contain the current
+  // selection — the convergence signal while a group is still being
+  // assembled. Null (and hidden) while nothing is selected, since every onset
+  // vacuously contains an empty selection and the number would say nothing.
+  const containmentCountValue = useMemo(
+    () =>
+      currentSelectionPitches.length === 0
+        ? null
+        : containmentCount(moonlightSonata, currentSelectionPitches),
+    [currentSelectionPitches],
+  );
 
   const handleCapture = useCallback((capture: PitchCapture) => {
     setNotice(null);
@@ -193,7 +155,7 @@ export function PhraseLookupSurface() {
 
   const commitGroup = useCallback(() => {
     if (selection.length === 0) {
-      setNotice('Select at least one key on either row before adding a group.');
+      setNotice('Select at least one key before adding a group.');
       return;
     }
 
@@ -227,7 +189,7 @@ export function PhraseLookupSurface() {
       <div className="flex flex-col gap-1">
         <h2 className="text-lg font-medium">Phrase lookup</h2>
         <p className="text-muted-foreground text-sm">
-          Click where your hands went. Highlighted keys are the notes that can actually come next
+          Click the notes of one onset. Highlighted keys are the notes that can actually come next
           in this piece; dimmed keys cannot follow what you have entered so far, whether alone or
           together with what you have already picked for the current chord.
         </p>
@@ -239,10 +201,9 @@ export function PhraseLookupSurface() {
 
       <PhraseKeyboard
         keys={keys}
-        rows={rows}
         selection={selection}
-        availableByStaff={availableByStaff}
-        blockedByCoOccurrenceByStaff={blockedByCoOccurrenceByStaff}
+        available={available}
+        blockedByCoOccurrence={blockedByCoOccurrence}
         onCapture={handleCapture}
       />
 
@@ -261,7 +222,7 @@ export function PhraseLookupSurface() {
             Search
           </Button>
           <span className="text-muted-foreground text-xs">
-            {availableCount} possible next {availableCount === 1 ? 'key' : 'keys'} highlighted
+            {availableCount} possible next {availableCount === 1 ? 'note' : 'notes'} highlighted
           </span>
         </div>
 
@@ -269,6 +230,13 @@ export function PhraseLookupSurface() {
           <span className="text-muted-foreground">Current group: </span>
           {selectionText ?? 'nothing selected'}
         </p>
+
+        {containmentCountValue !== null ? (
+          <p className="text-muted-foreground text-xs" data-testid="containment-count">
+            {containmentCountValue} {containmentCountValue === 1 ? 'onset' : 'onsets'} in the piece
+            contain the current selection
+          </p>
+        ) : null}
 
         <p className="text-sm" data-testid="current-query">
           <span className="text-muted-foreground">Phrase: </span>
@@ -285,8 +253,7 @@ export function PhraseLookupSurface() {
       <div className="space-y-3" data-testid="results">
         {prefix.length === 0 ? (
           <p className="text-muted-foreground text-sm" data-testid="empty-query-message">
-            No groups entered yet. Select the keys of one onset on either row, then press Add
-            group.
+            No groups entered yet. Select the keys of one onset, then press Add group.
           </p>
         ) : matches.length === 0 ? (
           <p className="text-sm" data-testid="no-results-message">

@@ -169,6 +169,31 @@ export function occurrenceCount(
   return count
 }
 
+// Loop 012: how many onsets in the whole piece contain every pitch in a
+// candidate selection — irrespective of the committed prefix. This is the
+// convergence signal shown while a group is still being assembled: it tells
+// the user whether the chord they are building actually exists anywhere in
+// the piece, well before they commit it and run it through the sequence
+// constraint. An empty selection is vacuously contained everywhere, so it
+// returns the full onset count.
+export function containmentCount(
+  stream: readonly NoteGroup[],
+  selection: readonly number[],
+): number {
+  if (selection.length === 0) {
+    return stream.length
+  }
+
+  let count = 0
+  for (const group of stream) {
+    if (groupContainsAll(group.notes, selection)) {
+      count += 1
+    }
+  }
+
+  return count
+}
+
 export type PitchRange = { minPitch: number; maxPitch: number }
 
 // The keyboard's rendered range, read off the piece rather than hardcoded.

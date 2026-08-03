@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 
 import { moonlightSonata } from '../data/pieces/moonlight-sonata';
 import {
+  containmentCount,
   occurrenceCount,
   possibleContinuations,
   possibleContinuationsByStaff,
@@ -189,56 +190,87 @@ describe('group-wise co-occurrence constraint (Loop 011)', () => {
   });
 });
 
-describe('capture seam', () => {
-  it('toggles a key on and off for the row it was captured from', () => {
-    const first = applyCapture([], { source: 'pointer', staff: 2, pitches: [54] });
-    expect(first).toEqual([{ pitch: 54, staff: 2 }]);
+describe('capture seam (Loop 012 — pitch-only selection)', () => {
+  it('toggles a pitch on and off', () => {
+    const first = applyCapture([], { source: 'pointer', pitches: [54] });
+    expect(first).toEqual([54]);
 
-    const second = applyCapture(first, { source: 'pointer', staff: 1, pitches: [66] });
-    expect(second).toEqual([
-      { pitch: 54, staff: 2 },
-      { pitch: 66, staff: 1 },
-    ]);
+    const second = applyCapture(first, { source: 'pointer', pitches: [66] });
+    expect(second).toEqual([54, 66]);
 
-    expect(applyCapture(second, { source: 'pointer', staff: 1, pitches: [66] })).toEqual([
-      { pitch: 54, staff: 2 },
-    ]);
+    expect(applyCapture(second, { source: 'pointer', pitches: [66] })).toEqual([54]);
   });
 
-  it('keeps the same pitch on both rows distinct, and collapses it in the query', () => {
-    const bothRows = applyCapture([{ pitch: 66, staff: 1 }], {
-      source: 'pointer',
-      staff: 2,
-      pitches: [66],
-    });
-
-    expect(bothRows).toEqual([
-      { pitch: 66, staff: 1 },
-      { pitch: 66, staff: 2 },
-    ]);
-    expect(selectionPitches(bothRows)).toEqual([66]);
+  it('dedupes a pitch captured twice rather than tracking it per row', () => {
+    const first = applyCapture([], { source: 'pointer', pitches: [66] });
+    // Capturing the same pitch again is now a toggle-off: one keyboard has no
+    // second row for the same pitch to occupy.
+    expect(applyCapture(first, { source: 'pointer', pitches: [66] })).toEqual([]);
   });
 
   // A hardware adapter would report several pitches at once through this same
-  // seam. Loop 006 builds no adapter; it only leaves the shape usable.
+  // seam. This loop builds no adapter; it only leaves the shape usable.
   it('accepts a multi-pitch capture from a non-pointer source', () => {
-    expect(applyCapture([], { source: 'midi', staff: 2, pitches: [61, 49, 37] })).toEqual([
-      { pitch: 37, staff: 2 },
-      { pitch: 49, staff: 2 },
-      { pitch: 61, staff: 2 },
-    ]);
+    expect(applyCapture([], { source: 'midi', pitches: [61, 49, 37] })).toEqual([37, 49, 61]);
   });
 
-  it('produces the founding group from a two-row gesture', () => {
-    const lower = applyCapture([], { source: 'pointer', staff: 2, pitches: [54] });
-    const both = applyCapture(lower, { source: 'pointer', staff: 1, pitches: [66] });
+  it('produces the founding group from two captures, with no staff anywhere', () => {
+    const first = applyCapture([], { source: 'pointer', pitches: [54] });
+    const both = applyCapture(first, { source: 'pointer', pitches: [66] });
 
+    expect(both).toEqual([54, 66]);
     expect(selectionPitches(both)).toEqual([54, 66]);
   });
 
   it('does not mutate the selection it is given', () => {
-    const selection = [{ pitch: 60, staff: 1 } as const];
-    applyCapture(selection, { source: 'pointer', staff: 1, pitches: [62] });
-    expect(selection).toEqual([{ pitch: 60, staff: 1 }]);
+    const selection = [60];
+    applyCapture(selection, { source: 'pointer', pitches: [62] });
+    expect(selection).toEqual([60]);
+  });
+});
+
+describe('containment count (Loop 012)', () => {
+  // Section 4 fixture values, measured from the committed artifact at HEAD.
+  // Do not adjust these to match the implementation — the implementation
+  // must match these.
+
+  it('check 10 — F#4 (66) alone is contained in 87 onsets', () => {
+    expect(containmentCount(moonlightSonata, [66])).toBe(87);
+  });
+
+  it('B3 (59) alone is contained in 65 onsets', () => {
+    expect(containmentCount(moonlightSonata, [59])).toBe(65);
+  });
+
+  it('F#3 (54) alone is contained in 43 onsets', () => {
+    expect(containmentCount(moonlightSonata, [54])).toBe(43);
+  });
+
+  it('B1 + B2 (35, 47) together are contained in 13 onsets', () => {
+    expect(containmentCount(moonlightSonata, [35, 47])).toBe(13);
+  });
+
+  it('check 10 — F#3 + F#4 (54, 66) together are contained in 6 onsets', () => {
+    expect(containmentCount(moonlightSonata, [54, 66])).toBe(6);
+  });
+
+  it('an empty selection is contained everywhere: every onset in the piece', () => {
+    expect(containmentCount(moonlightSonata, [])).toBe(moonlightSonata.length);
+    expect(containmentCount(moonlightSonata, [])).toBe(823);
+  });
+
+  it('is independent of pitch order and duplicates in the selection', () => {
+    expect(containmentCount(moonlightSonata, [66, 54])).toBe(
+      containmentCount(moonlightSonata, [54, 66]),
+    );
+    expect(containmentCount(moonlightSonata, [54, 54, 66])).toBe(
+      containmentCount(moonlightSonata, [54, 66]),
+    );
+  });
+
+  it('does not mutate the piece', () => {
+    const before = structuredClone(moonlightSonata);
+    containmentCount(moonlightSonata, [54, 66]);
+    expect(moonlightSonata).toEqual(before);
   });
 });

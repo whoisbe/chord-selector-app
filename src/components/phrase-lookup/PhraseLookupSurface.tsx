@@ -19,20 +19,31 @@ import {
   type SelectedKey,
 } from '../../lib/music/capture';
 import {
+  containingOccurrences,
   containmentCount,
   possibleContinuations,
   streamPitchRange,
   type PitchRange,
 } from '../../lib/music/continuations';
 import { keyLayout } from '../../lib/music/keyboard';
+import { describePitchRange, sharedPitchRange } from '../../lib/music/onset-range';
 import { findPhraseMatches } from '../../lib/music/phrase-search';
 import { pitchToLabel } from '../../lib/music/pitch-label';
-import type { NoteGroup, PhraseQuery } from '../../lib/music/types';
+import type { PhraseQuery } from '../../lib/music/types';
+import { OnsetStrip } from './OnsetStrip';
 import { PhraseKeyboard } from './PhraseKeyboard';
 
-// Exact matching on a one-note prefix hits many places; the count is the
-// honest signal and the list is only a sample of it.
-const MAX_RENDERED_RESULTS = 20;
+// Exact matching on a one-note prefix hits many places — [E4] alone occurs 78
+// times — so the count stays the honest signal and the strips are a sample of
+// it. A one-note query is rarely the real question, which is what makes the
+// cap cheap: it costs little, and it is what stops a stray single note from
+// asking the browser to draw several hundred keyboards.
+const MAX_RENDERED_RESULTS = 12;
+
+// Loop 014: while a group is still being assembled the surface used to show a
+// containment count and nothing else, even when only a handful of places were
+// left. Below this many, the places themselves are worth drawing.
+const DISCLOSURE_THRESHOLD = 6;
 
 const FULL_RANGE: PitchRange = streamPitchRange(moonlightSonata) ?? { minPitch: 29, maxPitch: 87 };
 
@@ -44,39 +55,17 @@ function formatGroup(notes: readonly number[]): string {
   return `[${notes.map(pitchToLabel).join('+')}]`;
 }
 
-// A matched group drawn by staff: which notes each hand takes is what you
-// need in order to actually play it. This is a results-rendering facet only
-// (Loop 013 rebuilds it as strips) — it has nothing to do with how the group
-// was entered, which is pitch-only since this loop.
-function GroupByStaff({ group }: { group: NoteGroup }) {
-  const rows: Array<{ staff: 1 | 2; notes: number[] }> = [1, 2].map((staff) => ({
-    staff: staff as 1 | 2,
-    notes: group.notes.filter((_, index) => group.staves?.[index] === staff),
-  }));
-  const unattributed = group.notes.filter((_, index) => group.staves?.[index] === undefined);
-
-  return (
-    <span
-      className="inline-flex flex-col rounded-lg border border-border px-2 text-xs"
-      style={{ paddingTop: '4px', paddingBottom: '4px', lineHeight: 1.35 }}
-    >
-      {rows.map((row) => (
-        <span key={row.staff} className={row.notes.length === 0 ? 'text-muted-foreground' : ''}>
-          <span className="text-muted-foreground">{row.staff === 1 ? 'upper' : 'lower'} </span>
-          {row.notes.length === 0 ? '—' : row.notes.map(pitchToLabel).join(' + ')}
-        </span>
-      ))}
-      {unattributed.length > 0 ? <span>{unattributed.map(pitchToLabel).join(' + ')}</span> : null}
-    </span>
-  );
-}
-
 export function PhraseLookupSurface() {
   const [selection, setSelection] = useState<readonly SelectedKey[]>([]);
   const [committed, setCommitted] = useState<readonly SelectedKey[][]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   // The search control is a fallback only — results already update on commit.
   const [searchNonce, setSearchNonce] = useState(0);
+  // Staff colouring is opt-in and lives only in this component's state. No
+  // storage of any kind: the project has no persistence layer, Loop 001
+  // excluded one, and a toggle that survived a reload would quietly become a
+  // persistence decision made by a rendering loop.
+  const [showStaff, setShowStaff] = useState(false);
 
   const keys = useMemo(() => keyLayout(FULL_RANGE.minPitch, FULL_RANGE.maxPitch), []);
 
@@ -147,6 +136,37 @@ export function PhraseLookupSurface() {
         : containmentCount(moonlightSonata, currentSelectionPitches),
     [currentSelectionPitches],
   );
+
+  // Progressive disclosure (Loop 014): once the containment count is small
+  // enough, the containing onsets are drawn instead of merely counted. Above
+  // the threshold the count stays the only honest thing to show — 43 strips
+  // would be a wall, not an answer.
+  const disclosureOccurrences = useMemo(
+    () =>
+      containmentCountValue !== null && containmentCountValue <= DISCLOSURE_THRESHOLD
+        ? containingOccurrences(moonlightSonata, currentSelectionPitches)
+        : [],
+    [containmentCountValue, currentSelectionPitches],
+  );
+
+  const renderedMatches = useMemo(
+    () => matches.slice(0, MAX_RENDERED_RESULTS),
+    [matches],
+  );
+
+  // The loop's central rule: every onset keyboard on screen at one time is
+  // drawn on the same pitch range, computed across everything being shown.
+  // Both sections feed it, because both can be on screen at once — a phrase
+  // can be committed while a new group is part-way assembled, and two strips
+  // drawn to different rulers would be worse than useless.
+  const sharedRange = useMemo(() => {
+    const shown = [
+      ...renderedMatches,
+      ...disclosureOccurrences,
+    ].flatMap((occurrence) => [...occurrence.matchedGroups, ...occurrence.followingGroups]);
+
+    return sharedPitchRange(shown);
+  }, [renderedMatches, disclosureOccurrences]);
 
   const handleCapture = useCallback((capture: PitchCapture) => {
     setNotice(null);
@@ -251,6 +271,38 @@ export function PhraseLookupSurface() {
       </div>
 
       <div className="space-y-3" data-testid="results">
+        {sharedRange ? (
+          <div className="space-y-2">
+            <p className="text-muted-foreground text-xs">
+              Same range on every keyboard: {describePitchRange(sharedRange)}. Shapes below can be
+              compared directly.
+            </p>
+            <div className="flex flex-wrap items-center gap-2" style={{ rowGap: '0.5rem' }}>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showStaff}
+                onClick={() => setShowStaff((current) => !current)}
+                className="staff-toggle"
+              >
+                Colour by staff
+              </button>
+              {showStaff ? (
+                <span className="text-muted-foreground text-xs">
+                  Upper staff: dot marker. Lower staff: bar marker.
+                </span>
+              ) : null}
+            </div>
+            {/* The caveat is always present, not only while the toggle is on:
+                staff is the transcription's layout, and reading it as a hand
+                is exactly the mistake this surface has already caused once. */}
+            <p className="text-muted-foreground text-xs">
+              Staff is how the piece was written down. It does not always match which hand plays a
+              note.
+            </p>
+          </div>
+        ) : null}
+
         {prefix.length === 0 ? (
           <p className="text-muted-foreground text-sm" data-testid="empty-query-message">
             No groups entered yet. Select the keys of one onset, then press Add group.
@@ -264,11 +316,11 @@ export function PhraseLookupSurface() {
             <p className="text-sm" data-testid="result-count">
               {matches.length} {matches.length === 1 ? 'occurrence' : 'occurrences'} of {queryText}
               {matches.length > MAX_RENDERED_RESULTS
-                ? ` — showing the first ${MAX_RENDERED_RESULTS}`
+                ? ` — showing ${MAX_RENDERED_RESULTS}`
                 : ''}
             </p>
-            <ul className="space-y-3">
-              {matches.slice(0, MAX_RENDERED_RESULTS).map((match, index) => (
+            <ul className="space-y-3" aria-label="Occurrence list">
+              {renderedMatches.map((match, index) => (
                 <li
                   key={`${match.measure}-${match.beat}-${index}`}
                   className="rounded-lg border border-border"
@@ -278,33 +330,50 @@ export function PhraseLookupSurface() {
                   <p className="text-sm font-medium">
                     Measure {match.measure}, beat {formatBeat(match.beat)}
                   </p>
-                  <div
-                    className="flex flex-wrap items-center gap-2"
-                    style={{ marginTop: '0.5rem' }}
-                  >
-                    <span className="text-muted-foreground text-xs">matched</span>
-                    {match.matchedGroups.map((group, position) => (
-                      <GroupByStaff key={`matched-${position}`} group={group} />
-                    ))}
-                  </div>
-                  <div
-                    className="flex flex-wrap items-center gap-2"
-                    style={{ marginTop: '0.5rem' }}
-                  >
-                    <span className="text-muted-foreground text-xs">then</span>
-                    {match.followingGroups.length === 0 ? (
-                      <span className="text-xs">end of movement</span>
-                    ) : (
-                      match.followingGroups.map((group, position) => (
-                        <GroupByStaff key={`following-${position}`} group={group} />
-                      ))
-                    )}
-                  </div>
+                  {sharedRange ? (
+                    <OnsetStrip
+                      occurrence={match}
+                      range={sharedRange}
+                      showStaff={showStaff}
+                      matchedLabel="matched"
+                      matchedGroupName="Matched onsets"
+                    />
+                  ) : null}
                 </li>
               ))}
             </ul>
           </>
         )}
+
+        {disclosureOccurrences.length > 0 && sharedRange ? (
+          <div className="space-y-2">
+            <p className="text-sm">
+              {disclosureOccurrences.length === 1 ? 'The onset' : 'The onsets'} containing{' '}
+              {selectionText}, and what follows{' '}
+              {disclosureOccurrences.length === 1 ? 'it' : 'each'}:
+            </p>
+            <ul className="space-y-3" aria-label="Containing onset list">
+              {disclosureOccurrences.map((occurrence, index) => (
+                <li
+                  key={`containing-${occurrence.measure}-${occurrence.beat}-${index}`}
+                  className="rounded-lg border border-border"
+                  style={{ padding: '0.75rem' }}
+                >
+                  <p className="text-sm font-medium">
+                    Measure {occurrence.measure}, beat {formatBeat(occurrence.beat)}
+                  </p>
+                  <OnsetStrip
+                    occurrence={occurrence}
+                    range={sharedRange}
+                    showStaff={showStaff}
+                    matchedLabel="contains"
+                    matchedGroupName="Containing onsets"
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
     </div>
   );

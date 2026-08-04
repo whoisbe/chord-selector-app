@@ -255,6 +255,65 @@ html {
   z-index: 30;
 }
 
+/* Loop 014 — result onset strips.
+   Same reason these are hand-authored as the Loop 006 block above: there is no
+   Tailwind build step, so a utility class that is not already compiled into
+   src/index.css does nothing at all, silently. */
+
+.onset-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.onset-strip-section {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Wrap rather than scroll horizontally. Six onsets at ~294px overflow the
+   container, and a scroller would hide exactly the onsets the strip exists to
+   let you compare — you cannot compare shapes you have to scroll between. The
+   one horizontal scroller on this surface stays the input keyboard, which is
+   a single row that genuinely cannot wrap. */
+.onset-strip-onsets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.onset-keyboard {
+  display: block;
+  flex: none;
+}
+
+.staff-toggle {
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  line-height: 1.25;
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.staff-toggle[aria-checked='true'] {
+  background: #1f705f;
+  border-color: #16544a;
+  color: #ffffff;
+}
+
+/* :focus-visible cannot be expressed as an inline style. */
+.staff-toggle:focus-visible {
+  outline: 2px solid #1f705f;
+  outline-offset: 2px;
+}
+
 /* Octave landmarks sit below the black keys (48px) so nothing overlaps them. */
 .phrase-key-label {
   position: absolute;

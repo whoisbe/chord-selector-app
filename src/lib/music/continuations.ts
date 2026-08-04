@@ -18,7 +18,7 @@
 // excluded from the result — they are entered, not available.
 
 import { normalizeNotes } from './phrase-search'
-import type { NoteGroup } from './types'
+import type { NoteGroup, PhraseMatch } from './types'
 
 export type PrefixGroup = { notes: readonly number[] }
 
@@ -192,6 +192,42 @@ export function containmentCount(
   }
 
   return count
+}
+
+// Loop 014: the onsets counted by containmentCount, with the few onsets that
+// follow each of them — the material behind progressive disclosure. Once the
+// count is small enough to draw, the user should see *where* those places are
+// and what comes next, not just how many there are.
+//
+// The shape matches PhraseMatch so one renderer can draw both this and a
+// committed-phrase result. `matchedGroups` here is always the single
+// containing onset: this is containment of a selection still being assembled,
+// not a phrase match, and nothing about the committed prefix is applied.
+export function containingOccurrences(
+  stream: readonly NoteGroup[],
+  selection: readonly number[],
+  followingCount = 3,
+): PhraseMatch[] {
+  if (selection.length === 0) {
+    return []
+  }
+
+  const occurrences: PhraseMatch[] = []
+
+  stream.forEach((group, index) => {
+    if (!groupContainsAll(group.notes, selection)) {
+      return
+    }
+
+    occurrences.push({
+      measure: group.measure,
+      beat: group.beat,
+      matchedGroups: [group],
+      followingGroups: stream.slice(index + 1, index + 1 + followingCount),
+    })
+  })
+
+  return occurrences
 }
 
 export type PitchRange = { minPitch: number; maxPitch: number }

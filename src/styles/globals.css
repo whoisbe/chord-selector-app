@@ -291,6 +291,27 @@ html {
   flex: none;
 }
 
+/* Loop 015 — `then` stacks instead of wrapping. Every row is drawn to the
+   same shared range as its neighbours (see OnsetStrip.tsx), so a column
+   here, unlike a wrapped row, keeps every keyboard's x axis literally
+   aligned with the one above and below it; that alignment is the feature,
+   not a byproduct, so this must never wrap. */
+.onset-strip-onsets--stacked {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+
+.onset-strip-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.onset-strip-row-label {
+  white-space: nowrap;
+}
+
 .staff-toggle {
   border: 1px solid var(--border);
   border-radius: 0.5rem;

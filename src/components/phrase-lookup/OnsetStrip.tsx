@@ -1,4 +1,4 @@
-// Results as onset strips (Loop 014).
+// Results as onset strips (Loop 014), with `then` stacked vertically (Loop 015).
 //
 // Each onset in a result is drawn as its own small keyboard, so a remembered
 // shape can be recognised the way it was learned — spatially — instead of
@@ -7,7 +7,8 @@
 // actively misled: at measure 13 the user read `lower F#3` and inferred left
 // hand while playing that note with his right.
 //
-// Two rendering decisions worth stating, both left open by the handoff:
+// Two rendering decisions worth stating, both left open by the Loop 014
+// handoff:
 //
 // SVG rather than DOM. PhraseKeyboard uses absolutely positioned buttons
 // because every key there is a real, focusable control. Nothing here is
@@ -22,6 +23,26 @@
 // the interactive surface (21px per white step), which is far too wide for a
 // strip, so coordinates are scaled on the way out — the layout stays the one
 // source of truth for relative position.
+//
+// Loop 015 stacks `then` vertically, one row per following onset, each on
+// the same x axis. That is the entire mechanism: matched.range and every
+// following row already share sharedRange (computed once, up in
+// PhraseLookupSurface), so a pitch that recurs across rows was always going
+// to land at the same x — stacking only had to stop spending that alignment
+// sideways. Two decisions the Loop 014 handoff left open, now settled:
+//
+// Note names return on stacked rows. The 014 comment this replaced read
+// "on for matched onsets, off for what follows" — a call forced by ~8px
+// labels on a horizontal following strip. A stacked column has a free row's
+// width beside it instead of a shrinking gap, so the constraint that made
+// following-onset labels illegible no longer holds, and there is no
+// remaining reason to withhold them.
+//
+// The per-row label sits beside the keyboard, not above it. Above would add
+// a text line's height to every one of up to three rows for a result that is
+// already the page's tallest element (Section 4 of the handoff); beside
+// costs no vertical space at all, keeps every row the same height, and reads
+// naturally left-to-right next to the shape it names.
 
 import {
   BLACK_KEY_HEIGHT,
@@ -111,12 +132,14 @@ type OnsetKeyboardProps = {
   group: NoteGroup
   range: PitchRange
   showStaff: boolean
-  // Note names under the keys. On for matched onsets, off for what follows:
-  // you know what you played, and at this size fewer labels read better.
-  showLabels: boolean
 }
 
-function OnsetKeyboard({ group, range, showStaff, showLabels }: OnsetKeyboardProps) {
+// Loop 015: note names under the keys are on unconditionally now. Loop 014
+// turned them off for following onsets only because a horizontal strip left
+// no room to render them; stacking removed that constraint (see the file
+// comment above), so the one caller that used to pass `showLabels={false}`
+// no longer exists and the prop went with it.
+function OnsetKeyboard({ group, range, showStaff }: OnsetKeyboardProps) {
   const keys = keyLayout(range.minPitch, range.maxPitch)
   const width = keyboardWidth(keys) * SCALE
   const height = KEYBOARD_HEIGHT + LABEL_BAND
@@ -184,24 +207,21 @@ function OnsetKeyboard({ group, range, showStaff, showLabels }: OnsetKeyboardPro
             : SOUNDING
         const marker = showStaff && note.staff !== undefined ? note.staff : undefined
 
-        let label: { x: number; y: number; anchor: 'start' | 'middle' | 'end' } | null = null
-        if (showLabels) {
-          const row = centreX - lastLabelX < 20 && lastLabelRow === 1 ? 2 : 1
-          lastLabelX = centreX
-          lastLabelRow = row
+        const row = centreX - lastLabelX < 20 && lastLabelRow === 1 ? 2 : 1
+        lastLabelX = centreX
+        lastLabelRow = row
 
-          // A name centred on the outermost key of the range overruns the
-          // edge and is clipped — F#1 renders as "#1" on any strip that
-          // starts there. Anchoring to the edge instead keeps it whole.
-          const halfName = (pitchToLabel(note.pitch).length * LABEL_FONT_SIZE) / 3
-          const anchor =
-            centreX - halfName < 0 ? 'start' : centreX + halfName > width ? 'end' : 'middle'
+        // A name centred on the outermost key of the range overruns the
+        // edge and is clipped — F#1 renders as "#1" on any strip that
+        // starts there. Anchoring to the edge instead keeps it whole.
+        const halfName = (pitchToLabel(note.pitch).length * LABEL_FONT_SIZE) / 3
+        const anchor: 'start' | 'middle' | 'end' =
+          centreX - halfName < 0 ? 'start' : centreX + halfName > width ? 'end' : 'middle'
 
-          label = {
-            x: anchor === 'start' ? 0 : anchor === 'end' ? width : centreX,
-            y: KEYBOARD_HEIGHT + (row === 1 ? LABEL_ROW_HEIGHT : LABEL_ROW_HEIGHT * 2),
-            anchor,
-          }
+        const label = {
+          x: anchor === 'start' ? 0 : anchor === 'end' ? width : centreX,
+          y: KEYBOARD_HEIGHT + (row === 1 ? LABEL_ROW_HEIGHT : LABEL_ROW_HEIGHT * 2),
+          anchor,
         }
 
         return (
@@ -233,22 +253,33 @@ function OnsetKeyboard({ group, range, showStaff, showLabels }: OnsetKeyboardPro
                 strokeLinecap="round"
               />
             ) : null}
-            {label ? (
-              <text
-                x={label.x}
-                y={label.y}
-                textAnchor={label.anchor}
-                fontSize={LABEL_FONT_SIZE}
-                fill="currentColor"
-              >
-                {pitchToLabel(note.pitch)}
-              </text>
-            ) : null}
+            <text
+              x={label.x}
+              y={label.y}
+              textAnchor={label.anchor}
+              fontSize={LABEL_FONT_SIZE}
+              fill="currentColor"
+            >
+              {pitchToLabel(note.pitch)}
+            </text>
           </g>
         )
       })}
     </svg>
   )
+}
+
+function formatBeat(beat: number): string {
+  return Number.isInteger(beat) ? String(beat) : beat.toFixed(2)
+}
+
+// Loop 015: the anchor carried beside each stacked following row. A
+// horizontal strip could lean on left-to-right order to say "this is the
+// next one"; a column still needs order (top to bottom supplies that), but
+// with the width a note-name label no longer claims, there is room to say
+// *where* too, so it does.
+function formatOnsetLabel(group: NoteGroup): string {
+  return `m${group.measure} b${formatBeat(group.beat)}`
 }
 
 type OnsetStripProps = {
@@ -279,7 +310,6 @@ export function OnsetStrip({
               group={group}
               range={range}
               showStaff={showStaff}
-              showLabels
             />
           ))}
         </div>
@@ -290,15 +320,19 @@ export function OnsetStrip({
         {occurrence.followingGroups.length === 0 ? (
           <span className="text-xs">end of movement</span>
         ) : (
-          <div className="onset-strip-onsets">
+          // Stacked, not the matched section's row (Loop 015): every row is
+          // drawn to `range`, the same shared window as the matched onsets
+          // above it, so a pitch recurring across rows lands at the same x
+          // in each — that alignment is what turns a column of keyboards
+          // into a readable contour instead of just a saving of width.
+          <div className="onset-strip-onsets onset-strip-onsets--stacked">
             {occurrence.followingGroups.map((group, position) => (
-              <OnsetKeyboard
-                key={`following-${position}`}
-                group={group}
-                range={range}
-                showStaff={showStaff}
-                showLabels={false}
-              />
+              <div className="onset-strip-row" key={`following-${position}`}>
+                <OnsetKeyboard group={group} range={range} showStaff={showStaff} />
+                <span className="onset-strip-row-label text-muted-foreground text-xs">
+                  {formatOnsetLabel(group)}
+                </span>
+              </div>
             ))}
           </div>
         )}

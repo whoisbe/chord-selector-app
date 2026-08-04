@@ -51,6 +51,26 @@ async function enterFoundingQuery(page: Page) {
   await addGroup(page);
 }
 
+// Loop 015: a single-group query that matches twice in the piece (measure 5
+// and measure 42, both entered as [C#2+G#2+C#3+E3]). The occurrence at
+// measure 5 is followed by G#3, then C#4, then G#3 again — the same pitch
+// recurring two rows apart in the stack, not adjacent ones — so a check
+// built on it cannot pass by accident on a column that only happens to keep
+// neighbouring rows aligned.
+async function enterStackedFollowingQuery(page: Page) {
+  await keyByPitch(page, 'C#2').click();
+  await keyByPitch(page, 'G#2').click();
+  await keyByPitch(page, 'C#3').click();
+  await keyByPitch(page, 'E3').click();
+  await addGroup(page);
+}
+
+// Scopes a locator to one result's <li>, identified by its "Measure N, beat
+// B" heading — needed once more than one match is on screen at a time.
+function occurrenceItem(page: Page, label: string) {
+  return page.getByRole('listitem').filter({ hasText: label });
+}
+
 test.beforeEach(async ({ page }) => {
   await openPhraseLookupTab(page);
 });
@@ -235,4 +255,109 @@ test('the staff toggle resets on reload', async ({ page }) => {
 
   await expect(staffToggle(page)).toHaveAttribute('aria-checked', 'false');
   await expect(page.getByRole('img', { name: /staff/ })).toHaveCount(0);
+});
+
+// Loop 015 — stacking `then`.
+
+// Checks 7 and 8 — the following column runs strictly downward, and every
+// row is drawn at the same x with the same width as its neighbours.
+test('following onsets stack in a column: increasing y, identical x and width', async ({
+  page,
+}) => {
+  await enterStackedFollowingQuery(page);
+  await expect(page.getByText('Measure 5, beat 1')).toBeVisible();
+
+  const item = occurrenceItem(page, 'Measure 5, beat 1');
+  const following = item.getByRole('group', { name: 'Following onsets' });
+  const rows = following.getByRole('group', { name: 'Onset keyboard', exact: true });
+  await expect(rows).toHaveCount(3);
+
+  const boxes = await rows.evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const rect = node.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width };
+    }),
+  );
+  const [first, second, third] = boxes;
+
+  // Check 7 — strictly greater y than the row before it.
+  expect(second.y).toBeGreaterThan(first.y);
+  expect(third.y).toBeGreaterThan(second.y);
+
+  // Check 8 — the same x and width on every row.
+  expect(second.x).toBeCloseTo(first.x, 1);
+  expect(third.x).toBeCloseTo(first.x, 1);
+  expect(second.width).toBeCloseTo(first.width, 1);
+  expect(third.width).toBeCloseTo(first.width, 1);
+});
+
+// Check 9 — the loop itself. G#3 sounds in row 0 and row 2 of this
+// occurrence's following column; measured geometry, not appearance, is what
+// has to agree.
+test('a pitch shared by two stacked rows occupies the same x in both', async ({ page }) => {
+  await enterStackedFollowingQuery(page);
+
+  const item = occurrenceItem(page, 'Measure 5, beat 1');
+  const following = item.getByRole('group', { name: 'Following onsets' });
+  const rows = following.getByRole('group', { name: 'Onset keyboard', exact: true });
+
+  const firstGSharp = rows.nth(0).getByRole('img', { name: 'G#3', exact: true });
+  const thirdGSharp = rows.nth(2).getByRole('img', { name: 'G#3', exact: true });
+
+  const firstBox = await firstGSharp.locator('rect').first().boundingBox();
+  const thirdBox = await thirdGSharp.locator('rect').first().boundingBox();
+
+  expect(firstBox).not.toBeNull();
+  expect(thirdBox).not.toBeNull();
+  expect(thirdBox!.x).toBeCloseTo(firstBox!.x, 1);
+  expect(thirdBox!.width).toBeCloseTo(firstBox!.width, 1);
+});
+
+// Check 10 — `matched` is unaffected by the following column moving to a
+// stack. The founding query's three matched onsets exercise "more than one",
+// unlike the single-group query used for the checks above.
+test('matched onsets stay in a horizontal row', async ({ page }) => {
+  await enterFoundingQuery(page);
+
+  const item = occurrenceItem(page, 'Measure 12, beat 4');
+  const matched = item.getByRole('group', { name: 'Matched onsets' });
+  const keyboards = matched.getByRole('group', { name: 'Onset keyboard', exact: true });
+  await expect(keyboards).toHaveCount(3);
+
+  const boxes = await keyboards.evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const rect = node.getBoundingClientRect();
+      return { x: rect.x, y: rect.y };
+    }),
+  );
+  const [first, second, third] = boxes;
+
+  expect(second.y).toBeCloseTo(first.y, 1);
+  expect(third.y).toBeCloseTo(first.y, 1);
+  expect(second.x).toBeGreaterThan(first.x);
+  expect(third.x).toBeGreaterThan(second.x);
+});
+
+// Check 11 — every stacked row carries a readable measure/beat label.
+test('each stacked row is labelled with its own measure and beat', async ({ page }) => {
+  await enterStackedFollowingQuery(page);
+
+  const item = occurrenceItem(page, 'Measure 5, beat 1');
+  const following = item.getByRole('group', { name: 'Following onsets' });
+
+  await expect(following.getByText('m5 b1.33', { exact: true })).toBeVisible();
+  await expect(following.getByText('m5 b1.67', { exact: true })).toBeVisible();
+  await expect(following.getByText('m5 b2', { exact: true })).toBeVisible();
+});
+
+// Note names return on stacked rows (Section 9 of the handoff) now that
+// stacking frees the horizontal space Loop 014 withheld them for.
+test('stacked rows carry note names, not just the row label', async ({ page }) => {
+  await enterStackedFollowingQuery(page);
+
+  const item = occurrenceItem(page, 'Measure 5, beat 1');
+  const following = item.getByRole('group', { name: 'Following onsets' });
+
+  await expect(following.getByText('G#3', { exact: true }).first()).toBeVisible();
+  await expect(following.getByText('C#4', { exact: true })).toBeVisible();
 });

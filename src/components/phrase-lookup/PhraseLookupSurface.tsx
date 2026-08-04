@@ -8,7 +8,7 @@
 // does not match which hand plays it; asking the user to answer that
 // question bought nothing and, at measure 13 beat 1, actively misled.
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { Button } from '../ui/button';
 import { MOONLIGHT_SONATA_NAME, moonlightSonata } from '../../data/pieces/moonlight-sonata';
@@ -29,7 +29,8 @@ import { keyLayout } from '../../lib/music/keyboard';
 import { describePitchRange, sharedPitchRange } from '../../lib/music/onset-range';
 import { findPhraseMatches } from '../../lib/music/phrase-search';
 import { pitchToLabel } from '../../lib/music/pitch-label';
-import type { PhraseQuery } from '../../lib/music/types';
+import type { NoteGroup, PhraseQuery } from '../../lib/music/types';
+import { FocusedOccurrence } from './FocusedOccurrence';
 import { OnsetStrip } from './OnsetStrip';
 import { PhraseKeyboard } from './PhraseKeyboard';
 
@@ -55,6 +56,24 @@ function formatGroup(notes: readonly number[]): string {
   return `[${notes.map(pitchToLabel).join('+')}]`;
 }
 
+// Loop 016: what a collapsed occurrence says about itself while another is
+// focused.
+//
+// Exact matching means every occurrence of a query has the *same* matched
+// notes — repeating them on each line would distinguish nothing. What
+// actually differs between two occurrences is where they are and what
+// happens next, so a collapsed line carries its place and the one onset that
+// immediately follows it. That is the smallest thing that still lets you pick
+// the right occurrence to open, and it is the same "what comes immediately
+// next" question the compact strip answers, reduced to one line.
+function summariseFollowing(followingGroups: readonly NoteGroup[]): string {
+  if (followingGroups.length === 0) {
+    return 'end of movement';
+  }
+
+  return `then ${formatGroup(followingGroups[0].notes)}`;
+}
+
 export function PhraseLookupSurface() {
   const [selection, setSelection] = useState<readonly SelectedKey[]>([]);
   const [committed, setCommitted] = useState<readonly SelectedKey[][]>([]);
@@ -66,6 +85,13 @@ export function PhraseLookupSurface() {
   // excluded one, and a toggle that survived a reload would quietly become a
   // persistence decision made by a rendering loop.
   const [showStaff, setShowStaff] = useState(false);
+  // Loop 016: which rendered occurrence is open, by index. Session state
+  // only, for the same reason the staff toggle above is — and it is a single
+  // index rather than a set because the focused view is nearly a thousand
+  // pixels of keyboards, which is exactly why Kibana's surrounding-documents
+  // view opens one hit at a time instead of putting context controls on all
+  // of them.
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
 
   const keys = useMemo(() => keyLayout(FULL_RANGE.minPitch, FULL_RANGE.maxPitch), []);
 
@@ -167,6 +193,23 @@ export function PhraseLookupSurface() {
 
     return sharedPitchRange(shown);
   }, [renderedMatches, disclosureOccurrences]);
+
+  // A focus belongs to one occurrence of one query. When either the committed
+  // phrase or the group being assembled changes, the results underneath it
+  // are different results, so the focus is dropped rather than silently
+  // re-pointed at whatever now sits at that index.
+  //
+  // Dropping it on a selection change also keeps the surface to one pitch
+  // window at a time. The focused view is drawn on the fixed full-piece
+  // window while the containment strips are drawn on their own shared range;
+  // both on screen together would put two rulers in front of the reader,
+  // which is precisely what Loop 014 exists to prevent.
+  useEffect(() => {
+    setFocusedIndex(null);
+  }, [matches, disclosureOccurrences]);
+
+  const focusedMatch =
+    focusedIndex !== null ? (renderedMatches[focusedIndex] ?? null) : null;
 
   const handleCapture = useCallback((capture: PitchCapture) => {
     setNotice(null);
@@ -273,10 +316,24 @@ export function PhraseLookupSurface() {
       <div className="space-y-3" data-testid="results">
         {sharedRange ? (
           <div className="space-y-2">
-            <p className="text-muted-foreground text-xs">
-              Same range on every keyboard: {describePitchRange(sharedRange)}. Shapes below can be
-              compared directly.
-            </p>
+            {/* While an occurrence is focused it is the only thing drawing
+                keyboards, and it draws them on the fixed full-piece window
+                rather than on a range computed from what is shown — so the
+                sentence has to say which window is actually in force. Saying
+                "fixed" here is the promise check 10 tests: the frame is the
+                same before and after a step. */}
+            {focusedMatch ? (
+              <p className="text-muted-foreground text-xs">
+                Same range on every keyboard: {describePitchRange(FULL_RANGE)} — fixed while an
+                occurrence is focused, so paging between measures moves the notes and never the
+                frame.
+              </p>
+            ) : (
+              <p className="text-muted-foreground text-xs">
+                Same range on every keyboard: {describePitchRange(sharedRange)}. Shapes below can be
+                compared directly.
+              </p>
+            )}
             <div className="flex flex-wrap items-center gap-2" style={{ rowGap: '0.5rem' }}>
               <button
                 type="button"
@@ -319,28 +376,72 @@ export function PhraseLookupSurface() {
                 ? ` — showing ${MAX_RENDERED_RESULTS}`
                 : ''}
             </p>
+            <p className="text-muted-foreground text-xs">
+              Open an occurrence to read forward from it, a measure at a time.
+            </p>
             <ul className="space-y-3" aria-label="Occurrence list">
-              {renderedMatches.map((match, index) => (
-                <li
-                  key={`${match.measure}-${match.beat}-${index}`}
-                  className="rounded-lg border border-border"
-                  style={{ padding: '0.75rem' }}
-                  data-testid="result-item"
-                >
-                  <p className="text-sm font-medium">
-                    Measure {match.measure}, beat {formatBeat(match.beat)}
-                  </p>
-                  {sharedRange ? (
-                    <OnsetStrip
-                      occurrence={match}
-                      range={sharedRange}
-                      showStaff={showStaff}
-                      matchedLabel="matched"
-                      matchedGroupName="Matched onsets"
-                    />
-                  ) : null}
-                </li>
-              ))}
+              {renderedMatches.map((match, index) => {
+                const isFocused = focusedIndex === index;
+                // Every occurrence keeps a real button as its heading,
+                // focused or not: focusing is an interaction now, so it has
+                // to be reachable and activatable from the keyboard, and
+                // keeping the same button in both states means opening one
+                // never moves focus out from under the person who pressed it.
+                const heading = (
+                  <button
+                    type="button"
+                    className="occurrence-heading-button"
+                    aria-expanded={isFocused}
+                    onClick={() => setFocusedIndex(isFocused ? null : index)}
+                  >
+                    <span className="text-sm font-medium">
+                      Measure {match.measure}, beat {formatBeat(match.beat)}
+                    </span>
+                    {focusedIndex !== null && !isFocused ? (
+                      <span className="text-muted-foreground text-xs">
+                        {summariseFollowing(match.followingGroups)}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+
+                return (
+                  <li
+                    key={`${match.measure}-${match.beat}-${index}`}
+                    className="rounded-lg border border-border"
+                    style={{ padding: '0.75rem' }}
+                    data-testid="result-item"
+                    // Escape closes the focused occurrence from anywhere
+                    // inside the card, including from its heading button —
+                    // the same way out that every other collapsible thing on
+                    // the web has, at the cost of one handler.
+                    onKeyDown={(event) => {
+                      if (event.key === 'Escape' && focusedIndex !== null) {
+                        setFocusedIndex(null);
+                      }
+                    }}
+                  >
+                    {heading}
+                    {isFocused ? (
+                      <FocusedOccurrence
+                        occurrence={match}
+                        stream={moonlightSonata}
+                        range={FULL_RANGE}
+                        showStaff={showStaff}
+                        onClose={() => setFocusedIndex(null)}
+                      />
+                    ) : focusedIndex === null && sharedRange ? (
+                      <OnsetStrip
+                        occurrence={match}
+                        range={sharedRange}
+                        showStaff={showStaff}
+                        matchedLabel="matched"
+                        matchedGroupName="Matched onsets"
+                      />
+                    ) : null}
+                  </li>
+                );
+              })}
             </ul>
           </>
         )}

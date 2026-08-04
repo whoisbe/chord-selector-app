@@ -134,12 +134,17 @@ type OnsetKeyboardProps = {
   showStaff: boolean
 }
 
+// Exported for Loop 016's focused view, which draws a whole measure as a
+// column of these on one fixed window. Nothing about the drawing changes
+// there — that is the point: an onset in a result and the same onset reached
+// by paging are the same picture, so recognising one teaches you the other.
+
 // Loop 015: note names under the keys are on unconditionally now. Loop 014
 // turned them off for following onsets only because a horizontal strip left
 // no room to render them; stacking removed that constraint (see the file
 // comment above), so the one caller that used to pass `showLabels={false}`
 // no longer exists and the prop went with it.
-function OnsetKeyboard({ group, range, showStaff }: OnsetKeyboardProps) {
+export function OnsetKeyboard({ group, range, showStaff }: OnsetKeyboardProps) {
   const keys = keyLayout(range.minPitch, range.maxPitch)
   const width = keyboardWidth(keys) * SCALE
   const height = KEYBOARD_HEIGHT + LABEL_BAND
@@ -278,7 +283,9 @@ function formatBeat(beat: number): string {
 // next one"; a column still needs order (top to bottom supplies that), but
 // with the width a note-name label no longer claims, there is room to say
 // *where* too, so it does.
-function formatOnsetLabel(group: NoteGroup): string {
+// Loop 016 reuses this for the rows of a focused measure: a row means the
+// same thing in both places, so it is labelled the same way in both.
+export function formatOnsetLabel(group: NoteGroup): string {
   return `m${group.measure} b${formatBeat(group.beat)}`
 }
 

@@ -346,3 +346,121 @@ html {
   line-height: 9px;
   pointer-events: none;
 }
+
+/* Loop 016 — focused occurrence with measure navigation.
+   Hand-authored for the same reason as the Loop 006, 014 and 015 blocks
+   above: src/index.css is a pre-compiled Tailwind v4 artifact and this
+   project has no Tailwind build step, so a utility class that is not already
+   compiled into it does nothing at all, silently. :focus-visible and
+   :disabled cannot be expressed as inline styles in any case. */
+
+/* The whole heading line is the control that opens an occurrence, so it
+   spans the card and reads as a heading rather than as a chip. */
+.occurrence-heading-button {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.occurrence-heading-button:focus-visible {
+  outline: 2px solid #1f705f;
+  outline-offset: 3px;
+}
+
+.focused-occurrence {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.focused-occurrence-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.measure-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.measure-nav-button {
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.125rem 0.625rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+/* Disabled, never hidden: at measure 1 there is nowhere back to go, and a
+   control that vanished there would read as a crash rather than as a
+   boundary. */
+.measure-nav-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.measure-nav-button:focus-visible {
+  outline: 2px solid #1f705f;
+  outline-offset: 2px;
+}
+
+/* One row per onset, evenly spaced — no durations, no proportional spacing,
+   no timeline. A measure is a column of onsets, not a piano roll. Horizontal
+   overflow scrolls the whole column at once, so every row keeps the same x
+   whatever the container width. */
+.focused-onsets {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  overflow-x: auto;
+}
+
+.focused-onset-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-left: 0.5rem;
+  /* Transparent on unmarked rows rather than absent, so the rule an anchor
+     row gains costs no horizontal shift. */
+  border-left: 3px solid transparent;
+}
+
+/* The anchor stays identifiable by a word and a rule, not by hue: the badge
+   in the gutter says "matched" in text and the left edge goes solid. Colour
+   is the redundant third channel here, exactly as it is for the staff
+   markers in OnsetStrip.tsx. */
+.focused-onset-row--anchor {
+  border-left-color: #1f705f;
+  background: rgba(31, 112, 95, 0.14);
+}
+
+/* Fixed width on every row, marked or not. A gutter that only existed on
+   marked rows would push those keyboards sideways and break the alignment
+   the fixed window exists to guarantee. */
+.focused-onset-gutter {
+  flex: 0 0 5rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.focused-onset-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--foreground);
+}

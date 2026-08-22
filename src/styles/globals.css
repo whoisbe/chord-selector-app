@@ -260,46 +260,53 @@ html {
    Tailwind build step, so a utility class that is not already compiled into
    src/index.css does nothing at all, silently. */
 
+/* Two columns: `matched` on the left, `then` on the right. Both were stacks of
+   keyboards drawn to one shared range already, so side by side is what lets a
+   reader compare the phrase against what follows it without scrolling past one
+   to reach the other — and each column's keyboards share a left edge, so a
+   pitch keeps the same x everywhere in the strip.
+
+   align-items: flex-start keeps the two columns top-aligned when they hold
+   different numbers of onsets; wrap is the narrow-viewport fallback, where the
+   columns become one above the other rather than overflowing. */
 .onset-strip {
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.5rem 1.5rem;
   margin-top: 0.5rem;
 }
 
 .onset-strip-section {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: flex-start;
   gap: 0.5rem;
 }
 
-/* Wrap rather than scroll horizontally. Six onsets at ~294px overflow the
-   container, and a scroller would hide exactly the onsets the strip exists to
-   let you compare — you cannot compare shapes you have to scroll between. The
-   one horizontal scroller on this surface stays the input keyboard, which is
-   a single row that genuinely cannot wrap. */
+/* Both columns stack, and neither may ever wrap. Every keyboard in a column is
+   drawn to the same shared range (see OnsetStrip.tsx), so a column — unlike
+   the wrapped row `matched` used before the two-column layout — keeps every
+   keyboard's x axis literally aligned with the one above and below it. That
+   alignment is the feature, not a byproduct.
+
+   Wrapping is also what a strip must not do horizontally: a scroller would
+   hide exactly the onsets the strip exists to let you compare. The one
+   horizontal scroller on this surface stays the input keyboard, which is a
+   single row that genuinely cannot wrap. */
 .onset-strip-onsets {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: flex-start;
   gap: 0.5rem;
 }
 
 .onset-keyboard {
   display: block;
   flex: none;
-}
-
-/* Loop 015 — `then` stacks instead of wrapping. Every row is drawn to the
-   same shared range as its neighbours (see OnsetStrip.tsx), so a column
-   here, unlike a wrapped row, keeps every keyboard's x axis literally
-   aligned with the one above and below it; that alignment is the feature,
-   not a byproduct, so this must never wrap. */
-.onset-strip-onsets--stacked {
-  flex-direction: column;
-  flex-wrap: nowrap;
-  align-items: flex-start;
 }
 
 .onset-strip-row {

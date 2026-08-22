@@ -190,7 +190,7 @@ test('the focused window is F1 to D#6, 34 white keys, and is identical after a s
   await occurrenceHeading(page, 'Measure 12, beat 4').click();
 
   const fixedWindow = page.getByText(
-    'Same range on every keyboard: F1 to D#6, 34 white keys',
+    'Same range on every result keyboard: F1 to D#6, 34 white keys',
   );
   await expect(fixedWindow).toBeVisible();
 

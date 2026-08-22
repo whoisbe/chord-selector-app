@@ -48,6 +48,17 @@ const DISCLOSURE_THRESHOLD = 6;
 
 const FULL_RANGE: PitchRange = streamPitchRange(moonlightSonata) ?? { minPitch: 29, maxPitch: 87 };
 
+// The input keyboard is a full 88-key piano, A0 to C8, rather than a window cut
+// to whatever this piece happens to span. Result keyboards keep using the
+// piece-derived ranges above: those exist to make two shapes comparable, and
+// padding them with keys no occurrence can ever use would only shrink the part
+// that carries meaning. The input surface has the opposite job — it is the
+// instrument you are searching from, and a familiar left and right edge is
+// worth more there than a tight fit. Pitches outside FULL_RANGE simply render
+// permanently unavailable, which is already how any note that cannot follow the
+// phrase is drawn.
+const INPUT_RANGE: PitchRange = { minPitch: 21, maxPitch: 108 };
+
 function formatBeat(beat: number): string {
   return Number.isInteger(beat) ? String(beat) : beat.toFixed(2);
 }
@@ -93,7 +104,7 @@ export function PhraseLookupSurface() {
   // of them.
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
 
-  const keys = useMemo(() => keyLayout(FULL_RANGE.minPitch, FULL_RANGE.maxPitch), []);
+  const keys = useMemo(() => keyLayout(INPUT_RANGE.minPitch, INPUT_RANGE.maxPitch), []);
 
   const prefix = useMemo(
     () => committed.map((group) => ({ notes: selectionPitches(group) })),
@@ -324,13 +335,13 @@ export function PhraseLookupSurface() {
                 same before and after a step. */}
             {focusedMatch ? (
               <p className="text-muted-foreground text-xs">
-                Same range on every keyboard: {describePitchRange(FULL_RANGE)} — fixed while an
+                Same range on every result keyboard: {describePitchRange(FULL_RANGE)} — fixed while an
                 occurrence is focused, so paging between measures moves the notes and never the
                 frame.
               </p>
             ) : (
               <p className="text-muted-foreground text-xs">
-                Same range on every keyboard: {describePitchRange(sharedRange)}. Shapes below can be
+                Same range on every result keyboard: {describePitchRange(sharedRange)}. Shapes below can be
                 compared directly.
               </p>
             )}

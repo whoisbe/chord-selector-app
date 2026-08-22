@@ -256,3 +256,45 @@ None of the terminal-state stop rules in Section 12 of the handoff were triggere
 - **Check 7 is structurally unfixable within this loop's constraints.** Resolving it for real requires either an explicit decision to allow removing the pre-existing test ids from `src/` (a small, separate, reviewable change) or a redefinition of Check 7 to mean "no *new* test ids added" rather than "zero test ids anywhere." Recommend the human make that call explicitly in a future loop rather than leaving Check 7 permanently red.
 - **`webServer.reuseExistingServer: false` means every `npm run test:e2e` invocation runs a full `npm run build` first.** Current build is fast (~0.8s) so this is unnoticeable now; if the app grows substantially, consider whether the suite should instead build once and reuse a preview server across a CI job — no action needed today.
 - **The suite is intentionally corpus-specific** (ADR 0004): every asserted number is tied to the committed Moonlight Sonata artifact. Regenerating that artifact or ingesting a second piece will require updating these tests, which is correct behavior, not a defect — flagging so it isn't mistaken for flakiness later.
+
+
+---
+
+# Macro-layer amendment — 2026-08-03
+
+**Accepted as `DONE`. Check 7 is withdrawn — it was a macro-layer spec error, not a failure of this work.**
+
+## Check 7 tested a proxy, not the property
+
+The property wanted: *the e2e suite selects by accessible name, so it cannot pass while accessible names rot.*
+The check written: `grep -rn "data-testid" src/` returns nothing.
+
+Those are not the same thing, and the gap is the whole error. Independently confirmed:
+
+- the nine attributes **predate this loop** — `git grep -c data-testid e70ebba -- src/` returns 9, committed across Loops 006/011/012 when no prohibition existed
+- `src/components/phrase-lookup/PhraseKeyboard.tsx` — the component whose names are the selectors — carries **zero**
+- the suite uses **17** `getByRole`, **15** `getByText`, **0** `getByTestId`, and **0** CSS locators
+
+**The property held perfectly.** The correct check was always `grep -rn "getByTestId" e2e/` returns nothing, and by that measure this loop passes cleanly.
+
+Recorded in `docs/learning/specify-the-property-not-the-proxy.md`, alongside the same error in Loop 010's check 6b.
+
+## What the executor did right
+
+Detected the conflict **before implementing**, surfaced it, obtained a human decision, and reported the literal failure rather than editing `src/` to make a grep pass. That is the cheapest possible moment to catch a bad check, and the alternative — quietly deleting nine attributes to satisfy a grep — would have been a silent scope violation.
+
+## Independently verified by the macro layer
+
+- `src/` untouched at commit time; both vacuity-proof breakages reverted, tree clean
+- exactly one dependency added, `@playwright/test`, plus the `test:e2e` script
+- no `waitForTimeout` or `setTimeout` anywhere in `e2e/`
+- 11 tests, one per Section 5 scenario, names matching the mapping
+- every asserted value matches figures measured from the artifact and confirmed live during the Loop 012 review: 55, 16, 43, 8, 6, `1 occurrence of [F#3+F#4] → [C#4] → [E4]`, `Measure 12, beat 4`
+- the vacuity proof is genuine — two tests failed for the right reasons with real output, including the regex assertion rejecting `"F1, ready to play"`
+- three consecutive runs, 11 passed, 3.1s each
+
+`npm run test:e2e` itself was **not** run by the macro layer: Playwright ships platform-native browser binaries, so a Linux sandbox cannot execute what is installed on the developer's Mac — the same constraint as TypeScript 7.
+
+## Config decisions worth keeping
+
+Port **4173** rather than 3000, so the suite never collides with a running dev server. `vite preview` against a real build rather than `vite dev`, which sidesteps `server.open: true` popping a browser *and* means the suite verifies the built artifact. `reuseExistingServer: false` for a guaranteed-fresh instance. `retries: 0`, with a comment recording why: a flaky test is a finding, not something to absorb.

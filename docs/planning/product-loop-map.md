@@ -83,9 +83,18 @@ flowchart LR
 | [008 port to chord-selector-app](loops/008-port-to-chord-selector-app.md) | Completion | **DONE** | — |
 | [004 MusicXML ingestion](loops/004-musicxml-ingestion.md) | Completion | **DONE** (accepted; defect found in review → 009) | — |
 | [009 staff/pitch pairing repair](loops/009-staff-pairing-repair.md) | Repair | **DONE** | — |
-| [010 adopt TypeScript typechecking](loops/010-typescript-typechecking.md) | Governance | **NEXT — handed to Codex** | — |
+| [010 adopt TypeScript typechecking](loops/010-typescript-typechecking.md) | Governance | **DONE** — all 15 checks pass | — |
 | ~~005 Tailwind v3→v4 repair~~ | Repair | **dead** — defect was chordsense-only | — |
-| [006 two-row virtual keyboard input](loops/006-two-row-keyboard-input.md) | Completion | engineered, **spec needs revision against KeyboardDiagram.tsx** | 004 |
+| [006 two-row virtual keyboard input](loops/006-two-row-keyboard-input.md) | Completion | **DONE** — all 16 checks pass | — |
+| [011 group-wise key constraint](loops/011-group-wise-highlighting.md) | Completion | **DONE** | — |
+| [012 single-row input](loops/012-single-row-input.md) | Completion | **DONE** | — |
+| [013 Playwright e2e harness](loops/013-playwright-e2e.md) | Governance | **DONE** — 11 e2e tests, check 7 withdrawn as a spec error | — |
+| [014 results as onset strips](loops/014-onset-strips.md) | Completion | **DONE** — all 19 checks, 0 repairs | — |
+| [015 stack the following onsets](loops/015-stacked-following.md) | Completion | **DONE** — "then" rows stacked | — |
+| [016 focused occurrence + measure navigation](loops/016-measure-navigation.md) | Completion | **DONE** — all 21 checks, 0 repairs | — |
+| [017 browse the piece](loops/017-browse-the-piece.md) | Completion | **NEXT — spec ready** | — |
+| 018 prove ingestion generalises | Eval | designed, needs a second source file | — |
+| 019 upload MusicXML | Completion | directional | 018 |
 | 007 shape matching and eval harness | Eval | directional | 004 |
 
 ### 001 phrase lookup search vertical slice — DONE
@@ -166,33 +175,56 @@ Its governing constraint is **port faithfully, improve nothing in transit** — 
 
 The v3 `@tailwind` directives against an installed v4 were a `chordsense` defect. `chord-selector-app`'s Tailwind works. Loop never runs.
 
-### 006 two-row virtual keyboard input — engineered, and cheaper than specced
+### 006 two-row virtual keyboard input — DONE
 
-**`src/components/KeyboardDiagram.tsx` already exists and is confirmed working in the browser** — the By Key tab renders Root / 1st Inv / 2nd Inv diagrams with highlighted keys and note labels under them. 215 lines, MIDI-based at `startNote = 60`, the same `C4 = 60` convention we froze independently, with the exact white pattern `[0,2,4,5,7,9,11]` and black `[1,3,6,8,10]` the spec names, plus enharmonic labels and active-note highlighting.
+Executor: Claude Code (Opus 5). Terminal state `DONE`, **zero repair attempts**, all 16 checks. One commit, `1de04ff`.
 
-It is display-only: `notes: number[]` in, render out, no click handling. So this loop becomes *extend an existing component* — add input, a second row, a wider range, continuation dimming — rather than build one. The spec should be revised against it after 008 lands.
+Independently re-verified by the macro layer, including all six browser checks driven through Chrome:
 
-Replaces both the Loop 001 button grid and the text-entry plan. Upper row is staff 1, lower row staff 2, geometrically identical and x-aligned so a pitch sits at the same position on both — non-negotiable, since the whole premise is spatial memory.
+- geometry matches the macro-layer measurement exactly — `keyLayout(29,87)` → **59 keys, 34 white, 25 black**
+- continuations match: `[[54,66]]` → 1 occurrence, exactly `[61]` on staff 2; `[[66]]` → 77 occurrences, 20 continuations
+- the "**69 possible next keys**" shown on an empty phrase is correct and was checked: 33 distinct staff-1 pitches + 36 staff-2 = 69 *key elements* across two rows, against 55 distinct pitches overall
+- **the founding query was entered entirely from the accessibility tree, with zero coordinate clicks**, and returned `1 occurrence of [F#3+F#4] → [C#4] → [E4]`, Measure 12 beat 4
+- after committing `[F#3+F#4]`, exactly one key was available — C#4, lower row
+- undo re-ran the search correctly; clear reset to 69 and an empty phrase
 
-Both rows feed **one** group per onset, per ADR 0002. That is what lets the user enter the cross-staff F# octave at all.
+`KeyboardDiagram.tsx`, `ByKeyTab`, `ByNameTab`, `chordData`, `chordDatabase`, `phrase-search.ts`, the ingestion script and the committed artifact are all **untouched**. The build-a-new-component prohibition held.
 
-The feature is corpus-constrained highlighting. Measured against the real movement:
+Three things worth keeping:
 
-| Prefix | Occurrences | Pitches that can follow |
-|---|---|---|
-| `[F#4]` | 77 | 20 of 55 |
-| `[F#3 + F#4]` | 1 | **1 — C#4** |
-| `[F#3+F#4] → [C#4]` | 1 | **1 — E4** |
+**The accessible names are better than specified.** Keys are named `"F#3, Lower row, available next"` — pitch, row *and* highlight state. The three-state highlighting is exposed to assistive technology, not just to sight.
 
-After the octave, one key lights. Error prevention at entry rather than error forgiveness after the fact.
+**The two-row result display realises the third justification.** A match renders as `matched: upper F#4 / lower F#3`, then `upper — / lower C#4`. Hand distribution is visible, which is what you need in order to actually play the continuation.
 
-Geometry and continuations are pure modules with no React or DOM, so 9 of 15 verifier checks run without a browser — a direct consequence of the Loop 001 stranding.
+**`capture.ts` is a genuine seam.** `PitchCapture` carries `source: 'pointer' | 'midi'` and the toggle rule lives as pure data-in/data-out rather than in a click handler. The Web MIDI adapter was correctly not built, and is not designed out.
 
-### 007 shape matching and eval harness — directional
+Minor scope drift, disclosed and accepted: `src/styles/globals.css` was edited, which was neither listed in scope nor forbidden. It was necessary — see the styling constraint below — and the diff carries a comment explaining why.
+
+### 011 group-wise key constraint — DONE
+
+Executor: Claude Code (Sonnet 5). Terminal state `DONE`, zero repairs, commit `5f4b0e8`. Verified independently while triaging a user report: the app shows 11 possible next keys after selecting B1+B2, and the artifact gives 10 co-occurring pitches, one of which (G3) occurs on both staves and so renders twice — 11 matches exactly. It also distinguished the two dim reasons in the accessible names, answering the spec's open design question properly.
+
+**A user bug report against this loop turned out to be correct behaviour**, and produced the evidence for Loop 012. See below.
+
+### 011 — original context
+
+Loop 006's highlighting constrains pitch-by-pitch but **not group-wise**. Measured: a 2-key selection from the highlighted set is valid **0.8%** of the time — 12 real 2-note groups against 1,485 possible pairs — and after selecting F#3, 38 of the 54 remaining keys are still lit while leading nowhere.
+
+The app's own on-screen text says *"dimmed keys cannot follow what you have entered so far."* That sentence is currently true of sequences and false of chords. This loop closes the gap.
+
+Its most important check is the inverse one: for every group in the artifact, selecting its pitches one at a time must never make a later pitch of that same group unavailable. A too-aggressive constraint would make parts of the piece unreachable — worse than the problem being fixed.
+
+### 007 shape matching and eval harness — directional, and its case has weakened
 
 Kept directional on purpose; it should be specced from 004's evidence, not now.
 
-Its case is already made. The user's remembered phrase was correct in shape but wrong by an octave, and shape matching — transposition-invariant on interval sequence — found the core arpeggio figure in 8 places when exact matching found 0. Shape matching is the primary retrieval mode, not a relaxation bolted on later.
+**Loop 006 changed the calculus and this should be re-examined, not assumed.**
+
+The original case: the user's remembered phrase was correct in shape but wrong by an octave, and shape matching found the core arpeggio figure in 8 places where exact matching found 0. That was measured against **name-based entry**. With the guided keyboard, a non-existent *sequence* cannot easily be entered at all, and Loop 011 closes the *chord* gap too. Much of what fuzzy matching was for is being solved upstream, by prevention rather than forgiveness.
+
+What remains genuinely unsolved: **"I remember the shape but not the register."** Highlighting guides you only once you start correctly; it does not help someone who knows the figure but not where on the keyboard it sits. Shape matching answers that, and nothing else planned does.
+
+Decide this from use, not argument. The product now works end to end for one piece — the honest next input is where it actually fails in practice.
 
 Open axes to evaluate: interval-sequence invariance, subset matching for forgotten inner voices, gap tolerance, black/white contour, and **adjacent-physical-key** rather than ±1 semitone — because if input is spatial, the error model should be spatial. `E→F` is one semitone and adjacent; `C→D` is two semitones and adjacent.
 
@@ -214,7 +246,7 @@ Latent today, because nothing reads `staves` yet. That is exactly why all 15 of 
 
 The spec fixes the invariant rather than the function, deduplicates on `(pitch, staff)` pairs rather than pitch alone, and folds in Loop 004's missing commit.
 
-### 010 adopt TypeScript typechecking — NEXT
+### 010 adopt TypeScript typechecking — DONE, with a macro-layer lesson
 
 See ADR 0003. The project is TypeScript with **no `tsconfig.json` at all** and has never been typechecked — `vite build` and `vitest` both strip types without checking. Raised as a recommendation by Loops 004 and 009 and deferred until the human authorised the dependency.
 
@@ -228,7 +260,138 @@ Its sharpest verifier is the **value-level** enharmonic test: the type error van
 
 Worth recording: typechecking would **not** have caught Loop 009's desync — both arrays were `number[]`, correctly typed and wrongly paired.
 
+**Outcome.** Codex reported `FAILED_VERIFICATION`, and it was right to. All three failing checks were caused by the macro layer **editing the handoff mid-execution** to answer a version question — which breaks Task 0's byte-identical archive by construction, retroactively moved check 1, and added a check 6b demanding a *file* when Codex had already satisfied the invariant more cleanly via `"types": ["vite/client"]`. Check 6b is withdrawn; its solution was better than the one demanded. Amended to `DONE`. See `docs/learning/never-mutate-an-active-handoff.md`.
+
+Residual, logged not fixed: enharmonic spelling is chosen per chord **name**, not per key, so `C°` in D♭ major still renders `C/D♯/F♯`. A strict improvement over all-sharps, an incomplete fix, and outside this loop's scope.
+
+### 013 Playwright e2e harness — DONE
+
+Executor: Claude Code (Sonnet 5). Commit `8ccc9d4`. **11 e2e tests, three consecutive green runs at 3.1s each**, zero flake.
+
+The suite is genuinely accessibility-first: **17 `getByRole`, 15 `getByText`, 0 `getByTestId`, 0 CSS locators.** Every asserted value matches figures measured from the artifact and confirmed live during the Loop 012 review. The vacuity proof is real — renaming `'available next'` to `'ready to play'` failed two tests with genuine output, including a regex assertion rejecting `"F1, ready to play"`.
+
+**Check 7 was withdrawn as a macro-layer spec error.** It tested `grep -rn "data-testid" src/` returns nothing — a *proxy* for "the suite is accessibility-first" rather than the property. Nine such attributes predated the loop (confirmed: `git grep -c data-testid e70ebba -- src/` → 9), the keyboard component carries none, and the suite uses none. The correct check was `grep -rn "getByTestId" e2e/` returns nothing. Second time this error has occurred — see `docs/learning/specify-the-property-not-the-proxy.md`.
+
+The executor flagged the conflict **before implementing** and obtained a decision rather than deleting nine attributes to satisfy a grep.
+
+Config decisions worth keeping: port 4173 so the suite never collides with a dev server; `vite preview` against a real build, which sidesteps `server.open: true` *and* verifies the built artifact; `reuseExistingServer: false`; `retries: 0` with the reasoning recorded inline.
+
+**Loop specs can now stop carrying "if you have no browser, mark these `not run` and end at `BLOCKED`."** That line appeared in six consecutive handoffs.
+
+### 013 — original context
+
+See ADR 0004. Browser checks have been the weakest link in an otherwise disciplined chain: Loop 001 stranded at `BLOCKED` with correct work, Loop 010's checks 14–15 never ran, and Loop 012's took roughly twenty macro-layer tool calls plus an initial false failure caused by a one-render lag.
+
+The strongest argument is not speed. **The phrase keyboard's accessible names are the selectors**, so a Playwright suite written accessibility-first cannot pass unless those names stay correct. Accessibility has been protected by hand in Loops 006, 011 and 012 — each time by the macro layer driving the accessibility tree. This makes it continuously enforced instead of periodically inspected. The spec forbids `data-testid` on the phrase-lookup surface for exactly that reason: a test id would let the suite pass while the accessible name rotted.
+
+Its sharpest check is the **vacuity proof** — deliberately break two things the suite claims to test, capture the failure output, revert. A passing test that would also pass when broken is worse than no test.
+
+Its main risk is flakiness, and that risk is not hypothetical: the macro layer hit a one-render lag verifying Loop 012 by hand and briefly mistook it for a failure. The spec bans fixed sleeps and requires three consecutive green runs.
+
+Once it lands, six consecutive handoffs' worth of *"if you have no browser, mark these `not run` and end at `BLOCKED`"* can be retired.
+
+### 014 results as onset strips — NEXT, spec ready
+
+Fully designed in discussion; renumbered from 013 so the e2e harness lands first and 014 inherits scripted verification. Agreed shape: strips of onset keyboards with **one window shared by every rendered onset** so shapes stay comparable, **capped at 12** rendered against a worst case of 78 occurrences for `[E4]`, **progressive disclosure** showing strips once the containment count drops to ≤6, and **single-tone by default** with staff colouring behind a clearly-labelled opt-in toggle, session-state only.
+
+The staff toggle is opt-in because staff colouring actively misled the user at m13 — it grouped a right-hand note with left-hand ones. See Open Decision 5.
+
+Windows measured from the artifact: the founding query's 3 matched + 3 following spans **B1–F#4, 19 white keys**; the worst rendered case — `[E4]`, first 12 of 78 occurrences, each with 3 following — still only spans **21 white keys** against a full keyboard's 34. So the shared window stays narrow in practice, which is what makes strips viable at all.
+
+Its decisive check is the **shared window**: every onset keyboard on screen must use one identical pitch range. Per-onset windows would make shapes incomparable, and comparing shapes is the entire reason for rendering results spatially rather than as text.
+
+**DONE** — executor Claude Code (Opus 5), commit `7903cad`, **zero repair attempts**, all 19 checks. 11 new e2e tests (22 total), `getByTestId` still zero. Verified: the shared window computes to **B1–F#4, 19 white keys** exactly as measured; the cap reports `78 occurrences of [E4] — showing 12`; disclosure fires at 13 → count and 6 → strips; no storage APIs anywhere.
+
+**Macro-layer near-miss, recorded because it nearly repeated Loop 010.** The user asked for a layout refinement "before we close this out", which the macro layer read as *before the loop runs* — and amended 014's spec, handoff and kickoff copy accordingly. The loop had in fact already executed four hours earlier. The committed prompt archive was untouched and still records what ran, so the immutable record held; the kickoff copy was restored byte-identical from it and the spec reverted to as-executed. The refinement became Loop 015 instead.
+
+The lesson refines the existing one rather than repeating it: *never mutate an active handoff* was already written down, but the macro layer checked "has this executed?" against its own memory instead of `git log`. **The repo knows whether a loop has run — ask it.**
+
+**Superseded design note (2026-08-03), now Loop 015:** matched onsets render left-to-right, but **following onsets stack vertically**. With a shared window this puts the same pitch at the same x on every row, so melodic movement reads as a left/right shift travelling down the column — no gap to cross, no re-alignment between onsets. It also removes the width problem (three stacked onsets are ~252px wide rather than ~756px) and frees horizontal room for readable per-onset measure/beat labels, which withdraws the earlier concession to omit labels on following onsets.
+
+The refinement makes the shared window **more** load-bearing, not less: vertical alignment is the entire mechanism, so a misaligned window would make the stack actively misleading rather than merely unhelpful. Checks 13b–13d were added to assert stacking, x-alignment across rows, and labels.
+
+Amending here was safe because **no executor was running** — the contrast with Loop 010, where a mid-run amendment broke the prompt archive by construction, is the whole point of `docs/learning/never-mutate-an-active-handoff.md`.
+
+Worth noting where this converges: stacked onsets sharing one pitch window is structurally a **discrete piano roll** — time down, pitch across. Piano-roll rendering has been out of scope since Loop 001, and the spec stays on the right side of that line (discrete onsets, no durations, no timeline). If the stack reads well, going further is a product decision deserving its own loop and ADR.
+
+This is also the first loop whose browser verification is **`npm run test:e2e`** rather than manual checks — the payoff from Loop 013. Its check 6 applies that loop's lesson directly: it asserts the suite does not *use* `getByTestId`, rather than that no test ids exist.
+
+### 016 focused occurrence + measure navigation — DONE
+
+Executor: Claude Code (Opus 5). Commit `31b1539`, **zero repairs**, all 21 checks. The e2e suite now stands at **42 tests** across three specs, `getByTestId` still zero.
+
+**Check 10 is the model for how a geometry check should be written.** It measured the focused frame before and after `>`: 12 keyboards, one distinct width (`479.666…px`), one distinct x (`144`), byte-identical across the step. Then it measured the *unfocused* strip for contrast — `269.666…px`, B1–F#4, 19 white keys — proving the focused view really is the fixed full-piece window and not a range that happened to come out the same. That is the same discipline as Loop 004's staff-split control: showing the right answer came from the right place.
+
+The vacuity proof was equally well chosen — the x-alignment assertion was broken by exactly **14px, one white key**, which is precisely the corruption a per-measure window would introduce.
+
+Two things arrived better than specified. Boundary controls are named `"Previous measure, unavailable at measure 1"` rather than merely being disabled, so the *reason* reaches assistive technology. And opening an occurrence with `Enter` keeps focus on the button that was pressed, asserted with `toBeFocused()` — focus is not moved out from under the person who acted.
+
+Check 19 verified "not a piano roll" mechanically rather than by assertion: 12 evenly spaced rows with every consecutive gap equal within 0.05px, `audio` and `video` element counts of zero, and a grep for duration/playback/timeline returning nothing.
+
+### Week of use — 2026-08-05 to 08-07
+
+The human used the app and made two changes directly, outside the loop system. Both are legitimate: loops exist for bounded delegation, not as the only route into the repo.
+
+**`3e6efdb` — a manual test procedure.** `docs/testing/016-measure-navigation-manual.md`, explicitly framed as mirroring the e2e suite and **not** a substitute for it, citing ADR 0004 as the verifier of record. It complements the automation rather than competing with it.
+
+**`1188094` — the result keyboards restyled to match By Key / By Name**, and with it a real layout change: `matched` became a **column** like `then`, and the two columns now sit **side by side**, top-aligned.
+
+**This is the strongest validation Loop 013 could have had.** The restyle moved the key scale from 14px to 21px per white step — exactly the geometry the suite asserts — so the suite failed. The assertions were then **updated, not loosened**: the old `matched` test (equal y, increasing x) became increasing y with identical x *and* identical width, and a new test was added asserting the two columns are strictly side by side and top-aligned, with a comment explaining why that is the property worth holding. Same rigor, re-expressed for new intent.
+
+That is what an e2e suite is for, and it is the failure mode the vacuity proofs were guarding against — a suite that gets edited into agreement rather than kept honest.
+
+It does **supersede Loop 015's frozen decision** that `matched` stays horizontal. Recorded in that spec so the docs do not describe a layout that no longer exists.
+
+Requested after using 015: `<` / `>` navigation by measure, on the model of Kibana Discover's surrounding-documents view — anchor on a hit, see context around it, page outward.
+
+Measuring the piece changed the design twice. **A measure is ~12 onsets** (median 12, max 13), so stacked it is ~720px — a page, not an increment. That means navigation needs a **focus**: six occurrences each showing a measure would be ~4,300px, and Kibana itself does not put context controls on every hit.
+
+And **per-measure pitch windows vary from 11 to 32 white keys**. A window that recomputes as you page would resize and shift the keys underneath you, so apparent melodic movement would be partly an artefact of the frame — worse than no navigation, because it misinforms. The focused view therefore uses a **fixed full-piece window, F1–D#6, 34 white keys**, which is *identical to the input keyboard's range*. Results and input become one frame.
+
+Both context mechanisms are kept deliberately: the compact default still shows three following onsets, because the founding match sits at measure 12 **beat 4** and paging straight to m13 would skip what directly follows it. Immediate neighbourhood and read-forward answer different questions.
+
+Checks 10 and 11 are the loop — the frame must be byte-identical before and after pressing `>`, and a pitch must hold its x across measures.
+
+Recorded honestly: this widens the product from *lookup* to *lookup plus read-forward*. Still not a piano roll — no durations, no timeline, no proportional spacing — a boundary the user has settled.
+
+### 017 browse the piece — NEXT
+
+The tab opens empty; the piece is invisible until something matches. The user practises from the score, often knows where he stopped, and wants to land there.
+
+Measuring settled the design. Rendering the whole movement is **~49,400px and ~48,600 key nodes**, so incremental loading is a ceiling rather than a nicety. And **reaching measure 34 by scrolling costs ~24,100px** — about thirty screens — so a **jump-to-measure control is required, not optional**. Scroll reads forward; jump gets you there.
+
+Loop 016's fixed frame carries this: a window recomputing per measure would resize keys continuously through 50,000px of scroll. That decision was made for navigation and turns out to be load-bearing for browse.
+
+**No persistence.** The human supplies the memory of where he stopped; the jump control acts on it. Loop 001's storage exclusion holds.
+
+Check 10 is the one most likely to be skipped: **loading more must be keyboard-operable**, not scroll-only. Scroll-triggered loading looks finished without it and silently strands anyone who cannot generate a scroll event.
+
+Second widening in two loops, recorded honestly: the product becomes a **pitch-position score reader with lookup in it**. Still not a piano roll — no durations, no rhythm, no notation.
+
+### 018 prove ingestion generalises — designed, blocked on a file
+
+**Closes ADR 0001's untested caveat**, flagged twice and never acted on: the finding was *"MusicXML from MuseScore is excellent"*, not *"MusicXML is excellent"*, and the 1210-of-1210 explicit `<staff>` figure is a MuseScore property rather than a format guarantee.
+
+Run a second, **differently-sourced** MusicXML through the existing script and see what breaks. Cheap, and it decides whether Loop 019 is a UI loop or a parser-hardening project — a question far better answered before users can hand the app arbitrary files than after.
+
+**Blocked on the human dropping a file from a different exporter into `data/spike/`.**
+
+### 019 upload MusicXML — directional
+
+The parser is more portable than expected: 240 lines, Node-coupled only at the edges (`readFileSync`, `writeFileSync`, the CLI guard, and `JSDOM` purely to supply `DOMParser`). Browsers have `DOMParser` natively, so **jsdom drops out**. `.mxl` is a ZIP, but `DecompressionStream` is native — possibly no dependency at all, worth a spike rather than an assumption.
+
+Three consequences that are not obvious:
+
+**Storage becomes a real question.** Loop 001 excluded persistence and every loop since has grepped to keep it out. Upload wants "my pieces" to survive a reload. That is an ADR.
+
+**The e2e suite's premise breaks.** Its assertions are Moonlight constants — `55 possible next notes`, `78 occurrences of [E4]`, `Measure 1 of 69`. A variable piece makes them meaningless unless a fixture piece is pinned for tests.
+
+**Failure needs a surface.** Today a bad parse is impossible because the artifact is committed and correct. Upload makes "this has no staff information" and "this is not MusicXML" states the UI must express.
+
 ## Open decisions
+
+**~~OPEN DECISION 5~~ — RESOLVED: staff is data, not a user-facing surface.**
+Three separate failures trace to surfacing staff as though it described hands: ADR 0002 (searching by staff hid the founding query), the m13 bug report (the user looked on the row his hand suggested), and the results colouring (grouped a right-hand note with left-hand ones). Staff stays as ingested data — ingestion depends on it — but is removed from input in Loop 012 and made opt-in in results in Loop 013.
 
 **~~OPEN DECISION 1~~ — RESOLVED: exact matching does not survive contact.**
 Settled empirically, not by argument. The user's own remembered phrase returned **zero** exact matches against the real score, while shape matching returned the correct figure in 8 places. Loop 007 exists, it is an eval loop, and the eval must precede the fuzzy code.
@@ -240,6 +403,16 @@ Search across a library is a different product from search within a piece the us
 Cause diagnosed as a v3→v4 migration gap. Its own repair loop, kept out of Loop 002.
 
 **~~OPEN DECISION 7~~ — RESOLVED: TypeScript typechecking adopted.** ADR 0003. `typescript` is the one dependency added; `strict: true`. Loop specs may stop carrying the "the build does not typecheck" note once Loop 010 lands.
+
+**OPEN DECISION 9 — how should styling work, given there is no Tailwind build step?**
+Discovered in Loop 006 and verified: no `tailwindcss` dependency, no PostCSS or Tailwind config, and `src/index.css` is a 1,783-line **pre-compiled** Tailwind v4 artifact. **Any utility class not already compiled into it silently does nothing** — no error, no warning, just an unstyled element.
+
+Loop 006 worked around it by hand-authoring rules in `src/styles/globals.css`, which is correct for one loop and does not scale. The options are to keep hand-authoring, to add a real Tailwind build step (a dependency decision), or to adopt a different styling approach for new components. Recorded in `CLAUDE.md` and `AGENTS.md` so no future executor rediscovers it the hard way. Blocks nothing, but it will shape every future UI loop.
+
+**OPEN DECISION 8 — key-aware enharmonic spelling.**
+Loop 010 fixed By Key's enharmonics per chord *name* (`chord.includes('♭')`), not per *key*. Confirmed in the browser: in `D♭ Major`, the `C°` chord still renders `C / D♯ / F♯` instead of `C / E♭ / G♭`. Every chord whose own name carries no accidental but whose notes need one is affected.
+
+A strict improvement over the previous all-sharps behaviour, and incomplete. The real fix is unifying `chordData.ts` onto `chordDatabase.ts`, which already carries correct per-chord `noteNames` from the CSV — the migration ADR 0003 considered and deliberately declined as too large for a typecheck loop. Blocks nothing.
 
 **OPEN DECISION 6 — does the Python chord generator have a home?**
 `chordsense/scripts/` holds it, and `chord-selector-app/src/data/comprehensive_chords.csv` is its output — so the two repos were always related. Loop 008 does not port the generator. Whether it should move, stay, or become a third thing is unanswered and blocks nothing.
@@ -262,7 +435,15 @@ These are settled and should not be relitigated without an ADR:
 
 ## Methodology notes
 
-Executor per loop is chosen at handoff time and recorded in the loop spec. Loop 001 ran on Codex; Loop 002 is assigned to Codex. Loops 008, 004, and 009 ran or run on Claude Code; 001 and 002 on Codex. Loop 006 is engineered and unassigned.
+Executor per loop is chosen at handoff time and recorded in the loop spec. Loop 001 ran on Codex; Loop 002 is assigned to Codex. Executor per loop is chosen at handoff time. Loops 001, 002 and 010 ran on Codex; 008, 004, 009 and 006 on Claude Code.
+
+**Two evidence-backed selection heuristics have emerged.**
+
+*Browser access.* Codex has reported "No browser is available" in both loops it ran that carried browser checks (001, 010). Claude Code has driven a browser successfully (008, 004). For loops whose verification is mostly automated this barely matters — the macro layer closes the browser checks afterwards. For an interactive UI loop it matters a lot, because the executor needs to see the thing it is building, not just have it verified later. That is what decided Loop 006.
+
+*Model tier follows loop type, not loop size.* The mechanical, high-volume loops (008's port, 002's hygiene) were zero-repair successes with crisp verifiers; a mid tier would have served. The one real defect this project produced came from Loop 004, in a facet no check covered — a judgment failure, not a throughput one. Loops with open design decisions get the top tier. Loop 006 left four decisions open and ran on Opus 5; Loop 011 is mechanical with a crisp verifier and one open question, and runs on Sonnet 5.
+
+*Boundary discipline.* Codex has the stronger record here: it refused `git add -f` in 002 when that would have satisfied a check while hiding a defect, and in 010 it caught a mutated handoff and reported `FAILED_VERIFICATION` rather than claiming success. Where a loop's main risk is crossing a line, that record counts.
 
 Loop 001's `BLOCKED` outcome produced a durable learning worth carrying into every future handoff: **a verifier that requires a capability the executor's environment may not have is a verifier that can strand an otherwise complete loop.** Interaction checks should either be assigned to an executor with a confirmed browser, or be explicitly designated as human-verified steps in the handoff. Loop 002 Task 4 writes this into `CLAUDE.md` and `AGENTS.md`.
 

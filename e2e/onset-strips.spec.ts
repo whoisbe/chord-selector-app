@@ -101,7 +101,7 @@ test('the founding query draws every keyboard on B1 to F#4, 19 white keys', asyn
   await enterFoundingQuery(page);
 
   await expect(
-    page.getByText('Same range on every keyboard: B1 to F#4, 19 white keys'),
+    page.getByText('Same range on every result keyboard: B1 to F#4, 19 white keys'),
   ).toBeVisible();
 });
 
@@ -127,7 +127,7 @@ test('the shared range holds across all twelve capped results', async ({ page })
   await addGroup(page);
 
   await expect(
-    page.getByText('Same range on every keyboard: F#1 to F#4, 21 white keys'),
+    page.getByText('Same range on every result keyboard: F#1 to F#4, 21 white keys'),
   ).toBeVisible();
 
   const widths = await onsetKeyboards(page).evaluateAll((nodes) =>
@@ -180,7 +180,7 @@ test('F#3 plus F#4 renders strips for all 6 containing onsets before commit', as
   // Six containing onsets plus the three that follow each of them.
   await expect(onsetKeyboards(page)).toHaveCount(24);
   await expect(
-    page.getByText('Same range on every keyboard: F#1 to F#4, 21 white keys'),
+    page.getByText('Same range on every result keyboard: F#1 to F#4, 21 white keys'),
   ).toBeVisible();
 });
 
@@ -313,10 +313,11 @@ test('a pitch shared by two stacked rows occupies the same x in both', async ({ 
   expect(thirdBox!.width).toBeCloseTo(firstBox!.width, 1);
 });
 
-// Check 10 — `matched` is unaffected by the following column moving to a
-// stack. The founding query's three matched onsets exercise "more than one",
-// unlike the single-group query used for the checks above.
-test('matched onsets stay in a horizontal row', async ({ page }) => {
+// `matched` is a column now, on the same terms as `then`: it used to be a
+// wrapping horizontal row, which spent the shared-range alignment sideways.
+// The founding query's three matched onsets exercise "more than one", unlike
+// the single-group query used for the checks above.
+test('matched onsets stack in a column: increasing y, identical x and width', async ({ page }) => {
   await enterFoundingQuery(page);
 
   const item = occurrenceItem(page, 'Measure 12, beat 4');
@@ -327,15 +328,45 @@ test('matched onsets stay in a horizontal row', async ({ page }) => {
   const boxes = await keyboards.evaluateAll((nodes) =>
     nodes.map((node) => {
       const rect = node.getBoundingClientRect();
-      return { x: rect.x, y: rect.y };
+      return { x: rect.x, y: rect.y, width: rect.width };
     }),
   );
   const [first, second, third] = boxes;
 
-  expect(second.y).toBeCloseTo(first.y, 1);
-  expect(third.y).toBeCloseTo(first.y, 1);
-  expect(second.x).toBeGreaterThan(first.x);
-  expect(third.x).toBeGreaterThan(second.x);
+  expect(second.y).toBeGreaterThan(first.y);
+  expect(third.y).toBeGreaterThan(second.y);
+  expect(second.x).toBeCloseTo(first.x, 1);
+  expect(third.x).toBeCloseTo(first.x, 1);
+  expect(second.width).toBeCloseTo(first.width, 1);
+  expect(third.width).toBeCloseTo(first.width, 1);
+});
+
+// The two columns sit side by side, not one above the other: `then` starts to
+// the right of `matched` and their first rows share a top edge. This is the
+// layout property the columns exist for — the phrase and what follows it are
+// readable in one glance across.
+test('matched and then are two side-by-side columns', async ({ page }) => {
+  await enterFoundingQuery(page);
+
+  const item = occurrenceItem(page, 'Measure 12, beat 4');
+  const matchedFirst = item
+    .getByRole('group', { name: 'Matched onsets' })
+    .getByRole('group', { name: 'Onset keyboard', exact: true })
+    .first();
+  const followingFirst = item
+    .getByRole('group', { name: 'Following onsets' })
+    .getByRole('group', { name: 'Onset keyboard', exact: true })
+    .first();
+
+  const matchedBox = await matchedFirst.boundingBox();
+  const followingBox = await followingFirst.boundingBox();
+
+  expect(matchedBox).not.toBeNull();
+  expect(followingBox).not.toBeNull();
+  // Strictly to the right, clear of the matched column entirely.
+  expect(followingBox!.x).toBeGreaterThan(matchedBox!.x + matchedBox!.width);
+  // Top-aligned, so neither column reads as coming after the other.
+  expect(followingBox!.y).toBeCloseTo(matchedBox!.y, 0);
 });
 
 // Check 11 — every stacked row carries a readable measure/beat label.

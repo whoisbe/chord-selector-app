@@ -94,8 +94,8 @@ flowchart LR
 | [016 focused occurrence + measure navigation](loops/016-measure-navigation.md) | Completion | **DONE** — all 21 checks, 0 repairs | — |
 | [017 browse the piece](loops/017-browse-the-piece.md) | Completion | **DONE** — all 21 checks, 1 repair | — |
 | [018 prove ingestion generalises](../sprints/output/018-ingestion-generalises-output.md) | Eval | **DONE** — run inline, 6 findings | — |
-| [019 read a score at runtime](loops/019-read-a-score-at-runtime.md) | Enabling | **NEXT — handed to Claude Code (Opus 5)** | 018 |
-| 020 upload a score | Completion | directional | 019 |
+| [019 read a score at runtime](loops/019-read-a-score-at-runtime.md) | Enabling | **DONE** — all 23 checks, 0 repairs | 018 |
+| 020 upload a score | Completion | **NEXT — spec ready to write** | 019 |
 | 007 shape matching and eval harness | Eval | directional | 004 |
 
 ### 001 phrase lookup search vertical slice — DONE
@@ -402,24 +402,41 @@ Six findings, in cost order:
 5. **Grace notes fuse into their principal.** Same tick, so they merge into one `NoteGroup` and the search then demands both notes. 3 in Für Elise, 0 in Moonlight.
 6. **`querySelector('part')` silently takes the first part.** Untested rather than broken — both files are single-part piano. Exactly the shape validation exists to catch.
 
-### 019 read a score at runtime — NEXT, handed off
+### 019 read a score at runtime — DONE
 
-**Renamed from "upload MusicXML", and split in two.** Loop 018 showed the file picker is the small half. The ingestion is a build-time Node script that builds `new JSDOM()` inside itself and hardcodes its input path, its output path, and the export names `moonlightSonata` and `MOONLIGHT_SONATA_NAME` as literals in `renderArtifact`. It cannot read a `.mxl` at all — MuseScore's own download format.
+Shipped as `79b52a7`. All 23 checks, **zero repairs**. Full evidence in `docs/sprints/output/019-read-a-score-at-runtime-output.md`; the architecture is recorded in `docs/adr/0005-runtime-score-reading.md`.
 
-- **019 makes the app able to read a score at runtime.** No UI. It ends with a function that takes the bytes of a `.mxl` and returns a validated piece or an actionable refusal. Verified entirely by unit tests against the two `.mxl` files already in the repo — no browser.
-- **020 puts a file picker in front of it.** Drag-and-drop, the error surface these refusals feed, switching the loaded piece, re-anchoring browse and results.
+**Renamed from "upload MusicXML" and split in two**, because Loop 018 showed the file picker is the small half. 019 made the app able to read a score; 020 puts a picker in front of it.
 
-Splitting them makes 019 verifiable without a UI, and 020 a genuinely small UI loop instead of a UI loop with a parser hidden inside it.
+**The loop's own check passed, and the macro layer re-ran it independently rather than accepting the report.** Parsing `moonlight-sonata.mxl` through the new runtime path is **JSON-identical to the committed artifact** across all 823 groups, and `node scripts/ingest-musicxml.mjs` still regenerates it with `git diff --exit-code` returning 0. Für Elise reproduces Loop 018's table exactly — 598 onsets, 106 measures numbered 0–105, MIDI 33–100, 56 distinct pitches, title `Für Elise`, one `repeats-not-expanded` warning — and `measureBounds` reports **1 to 105** with the span reading **"105 measures and a pickup"**.
 
-**The check that makes 019 honest:** parsing `moonlight-sonata.mxl` through the new path must be **deep-equal to the committed artifact** — 823 groups, every field. That artifact is what every loop since 004 asserts against. Reproduce it and the refactor provably changed nothing; fail and every downstream test has to be re-argued. Its twin is that `node scripts/ingest-musicxml.mjs` must still regenerate the file with no diff — a refactor that reproduces the artifact once but cannot regenerate it has moved the problem, not solved it. And a third check exists because **two copies of the tick walk is the failure mode that would look like success.**
+**Architecture, now ADR 0005.** The tick walk takes an already-parsed document and exists in exactly one file, with three callers: the browser via a 12-line `DOMParser` adapter, the ingest script via jsdom, the suite via vitest. It lives in a new `src/lib/musicxml/`, so Loop 014's purity check on `src/lib/music/` is unchanged, unexcluded and passing. The boundary turned out to be describable without mentioning the check at all — one directory reasons about music already loaded, the other is about loading — which is the sign the check was protecting a real distinction nobody had named.
 
-**Architecture, frozen.** The tick walk takes an already-parsed document instead of building its own — browser hands it `DOMParser`, script and tests hand it `jsdom`. One algorithm, three callers. It lives in a **new `src/lib/musicxml/`** so Loop 014's purity check on `src/lib/music/` survives **untouched**: that directory holds pure functions over `NoteGroup[]`, the new one turns a file into `NoteGroup[]`. The split is the honest boundary, not a workaround.
+**Zip: zero dependencies, and defensible rather than lucky.** `DecompressionStream('deflate-raw')` does the inflating; DEFLATE is not hand-rolled. The reader takes the **central directory rather than local file headers** — an entry with a data descriptor zeroes its local sizes, so a local-header reader would have passed both test files and broken on the third — and **verifies every entry's CRC-32**, so a truncated download is refused rather than half-parsed. Nineteen loops, one dependency.
 
-**Zip: try zero dependencies first.** `.mxl` is deflate, and `DecompressionStream('deflate-raw')` is native in browsers and Node 22; the rest is ~60 lines of local-file-header reading, testable against two real files. Acceptable only if both files read correctly and the failure modes are tested — otherwise `fflate`, with the reason recorded. Eighteen loops, one dependency.
+**Validation refuses rather than accommodates**, as scoped: six conditions, nineteen tested refusal cases, each naming what was wrong and what was expected, with a test asserting none is a bare "invalid file". Multi-part scores are refused rather than merged — merging would widen the intake instead of narrowing the failure.
 
-**Validation exists to say no in a way you can act on.** The human scoped it: the app may assume a MuseScore download, so validation refuses clearly rather than widening what is accepted. No accommodation code for Finale, Sibelius or OMR. Six specific refusals — not a zip, no `<rootfile>`, not `score-partwise`, more than one `<part>`, no `<divisions>`, no pitched notes — each naming what was wrong and what was expected. **"Invalid file" is a shrug, not a refusal.**
+### The finding that outlived the loop
 
-**Decisions the human made, both taken as recommended.** Repeats: **detect and warn, keep document order** — modelling performance order would renumber measures and break every control 016 and 017 built. Pickup: **keep it in the stream, label it "Pickup", exclude it from the bounds**, so Für Elise reports 1–105 and calls itself "105 measures and a pickup". Beat labels: **left alone now that they are documented** — the quarter-note position has never confused the one user and fixing it would change the founding query's label.
+**The purity check had been failing since Loop 016, and three loops never noticed — because they never ran it.**
+
+`measures.ts` line 10 read *"the focused view is drawn on a fixed window"*. The grep is case-insensitive and matches substrings, so that sentence was a hit from commit `31b1539` onward. The executor changed one word, `window` → `span`, without touching the check, and flagged it at the top of its output rather than burying it.
+
+The map records a correction to the executor's framing: the check was **not** inherited-and-failing. Loops 015, 016 and 017 never carried it in their verifiers at all — `grep -c jsdom` over those three specs returns 0, 0, 0. Each handoff is written fresh, and a standing check survives only if the macro layer retypes it. Three times it was not retyped. **The check did not weaken; it evaporated.**
+
+The detail that settles it: Loop 017's `browse.ts` carries a comment from its own executor explaining that this directory is grepped for banned substrings and that it says "span" instead *deliberately* — while the real violation sat two files away, undetected, because 017's verifier omitted the check. Care is not a substitute for a check that runs.
+
+Written up as `docs/learning/a-check-in-prose-stops-running.md`. **Loop 020 must make the standing greps executable** — purity, `getByTestId`, no-persistence, no-fixed-sleeps are all greps retyped by hand into handoff after handoff, and they belong in `npm test`, not in prose.
+
+### 020 upload a score — NEXT
+
+The small UI loop 019 was split to make possible. A file picker, a drop target, an error panel fed by nineteen refusal messages already written, `piece.warnings` to render, and re-anchoring browse and results when the piece changes.
+
+`readScoreFromMxl(bytes, parseXml)` returns `{ ok: true, piece } | { ok: false, refusal }` and **is async** — the native decompression is stream-based. `piece.title` is `'Für Elise'` for the second file and `null` for Moonlight, whose XML declares no `<work-title>`, so 020 has to decide what to show when a piece does not name itself.
+
+Also in 020: making the standing greps executable, per the learning above.
+
+**OPEN DECISION 10 comes due alongside it**, with one new fact from 019 — a `Piece` is trivially serialisable and persisting one would be about six lines. The decision is entirely about whether it *should* happen, not whether it can.
 
 ## Open decisions
 
@@ -496,6 +513,7 @@ A second discipline was worth the cost here: when the macro layer re-verified Lo
 - `docs/learning/never-mutate-an-active-handoff.md` — Loop 010. The macro layer edited a live contract mid-execution; the executor correctly reported `FAILED_VERIFICATION`.
 - `docs/learning/specify-the-property-not-the-proxy.md` — Loop 013. A check tested that no `data-testid` attributes existed rather than that the suite did not use them.
 - `docs/learning/measurements-expire.md` — Loop 017. A handoff reasoned from pixel measurements taken one commit earlier; every figure was half the truth by the time the loop ran.
+- `docs/learning/a-check-in-prose-stops-running.md` — Loop 019. A standing check went three loops without being run, because each handoff is written fresh and it was not retyped.
 
 ## The most expensive lesson so far
 

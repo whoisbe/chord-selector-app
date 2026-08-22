@@ -7,7 +7,7 @@ import {
   parseRawNotes,
   buildMergedGroups,
   buildStaffGroups,
-} from '../../scripts/ingest-musicxml.mjs';
+} from '../lib/musicxml/parse-score.ts';
 import { findPhraseMatches } from '../lib/music/phrase-search';
 import { moonlightSonata } from '../data/pieces/moonlight-sonata';
 import type { NoteGroup, PhraseQuery } from '../lib/music/types';
@@ -18,6 +18,13 @@ const MUSICXML_PATH = resolve(__dirname, '../../data/spike/moonlight-sonata.musi
 // These tests exercise the real parser against the real score, not just the
 // committed artifact — a parser that returns the right answer for the wrong
 // reason is worse than one that fails (see loop 004 verifier, check 9).
+//
+// Loop 019 moved the tick walk into src/lib/musicxml/ and made it take an
+// already-parsed tree instead of building its own. These assertions are
+// unchanged from Loop 004 apart from that: the same numbers, on the same
+// score, through the module the app now calls at runtime. The parsed tree
+// comes from vitest's jsdom environment, which is the same jsdom the ingest
+// script uses.
 
 describe('MusicXML ingestion', () => {
   let rawNotes: ReturnType<typeof parseRawNotes>['rawNotes'];
@@ -30,7 +37,8 @@ describe('MusicXML ingestion', () => {
 
   beforeAll(() => {
     const xmlText = readFileSync(MUSICXML_PATH, 'utf8');
-    const parsed = parseRawNotes(xmlText);
+    const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+    const parsed = parseRawNotes(doc);
     rawNotes = parsed.rawNotes;
     measureCount = parsed.measureCount;
     pitchedNoteCount = parsed.pitchedNoteCount;

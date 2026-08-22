@@ -12,7 +12,10 @@ import { moonlightSonata } from '../data/pieces/moonlight-sonata'
 import { streamPitchRange } from '../lib/music/continuations'
 import {
   adjacentMeasure,
+  describeMeasureSpan,
+  isPickupMeasure,
   measureBounds,
+  measureLabel,
   measuresWithOnsets,
   onsetKey,
   onsetsInMeasure,
@@ -28,6 +31,16 @@ const gapped: NoteGroup[] = [
   { measure: 1, tick: 0, beat: 1, notes: [60] },
   { measure: 1, tick: 240, beat: 2, notes: [64] },
   { measure: 5, tick: 0, beat: 1, notes: [67] },
+]
+
+// Loop 019. The shape Für Elise has: an implicit first measure MusicXML
+// numbers 0, then the counted measures from 1. Fixture data, not score fact —
+// the real thing is asserted against the real file in scoreReading.test.ts.
+const withPickup: NoteGroup[] = [
+  { measure: 0, tick: 0, beat: 1, notes: [76] },
+  { measure: 1, tick: 0, beat: 1, notes: [75] },
+  { measure: 2, tick: 0, beat: 1, notes: [76] },
+  { measure: 3, tick: 0, beat: 1, notes: [71] },
 ]
 
 describe('measuresWithOnsets', () => {
@@ -51,6 +64,73 @@ describe('measureBounds', () => {
 
   it('spans the whole movement for the committed artifact', () => {
     expect(measureBounds(moonlightSonata)).toEqual({ firstMeasure: 1, lastMeasure: 69 })
+  })
+
+  // Loop 019. The pickup is in the stream and stays there — it is real music —
+  // but it is not a measure the score counts, so the jump control must not
+  // offer it as the lower bound.
+  it('excludes a pickup measure from the bounds it reports', () => {
+    expect(measureBounds(withPickup)).toEqual({ firstMeasure: 1, lastMeasure: 3 })
+  })
+
+  it('leaves a piece that starts at measure 1 exactly as it was', () => {
+    expect(measureBounds(gapped)).toEqual({ firstMeasure: 1, lastMeasure: 5 })
+    expect(measureBounds(moonlightSonata)).toEqual({ firstMeasure: 1, lastMeasure: 69 })
+  })
+
+  it('falls back to the pickup when there is nothing else to bound', () => {
+    expect(measureBounds([{ measure: 0, tick: 0, beat: 1, notes: [60] }])).toEqual({
+      firstMeasure: 0,
+      lastMeasure: 0,
+    })
+  })
+})
+
+describe('the pickup measure', () => {
+  it('is any measure numbered below 1 — MuseScore writes 0', () => {
+    expect(isPickupMeasure(0)).toBe(true)
+    expect(isPickupMeasure(1)).toBe(false)
+    expect(isPickupMeasure(69)).toBe(false)
+  })
+
+  // Check 14 of the Loop 019 verifier: a pure label function, no component.
+  it('is labelled "Pickup", never "Measure 0"', () => {
+    expect(measureLabel(0)).toBe('Pickup')
+    expect(measureLabel(0)).not.toContain('0')
+    expect(measureLabel(1)).toBe('Measure 1')
+    expect(measureLabel(12)).toBe('Measure 12')
+  })
+
+  it('keeps its onsets in the stream, where measuresWithOnsets can see them', () => {
+    expect(measuresWithOnsets(withPickup)).toEqual([0, 1, 2, 3])
+    expect(onsetsInMeasure(withPickup, 0)).toHaveLength(1)
+  })
+
+  // `<` from the first counted measure still steps into the pickup: it is
+  // music you can read, it is just not music the score numbers.
+  it('is still reachable by stepping back from measure 1', () => {
+    expect(adjacentMeasure(withPickup, 1, -1)).toBe(0)
+  })
+})
+
+describe('describeMeasureSpan', () => {
+  it('counts a piece with no pickup by its last measure', () => {
+    expect(describeMeasureSpan(moonlightSonata)).toBe('69 measures')
+    expect(describeMeasureSpan(gapped)).toBe('5 measures')
+  })
+
+  // Für Elise is 105 measures and a pickup, never 106 — nobody counting bars
+  // in that score would ever reach 106.
+  it('names the pickup separately rather than counting it as a measure', () => {
+    expect(describeMeasureSpan(withPickup)).toBe('3 measures and a pickup')
+  })
+
+  it('says nothing about measures it cannot see', () => {
+    expect(describeMeasureSpan([])).toBe('0 measures')
+  })
+
+  it('makes a one-measure piece singular', () => {
+    expect(describeMeasureSpan([{ measure: 1, tick: 0, beat: 1, notes: [60] }])).toBe('1 measure')
   })
 })
 

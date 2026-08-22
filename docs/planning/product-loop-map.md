@@ -93,8 +93,9 @@ flowchart LR
 | [015 stack the following onsets](loops/015-stacked-following.md) | Completion | **DONE** — "then" rows stacked | — |
 | [016 focused occurrence + measure navigation](loops/016-measure-navigation.md) | Completion | **DONE** — all 21 checks, 0 repairs | — |
 | [017 browse the piece](loops/017-browse-the-piece.md) | Completion | **DONE** — all 21 checks, 1 repair | — |
-| [018 prove ingestion generalises](loops/018-prove-ingestion-generalises.md) | Eval | **DONE** — run inline, 6 findings | — |
-| 019 upload MusicXML | Completion | directional | 018 |
+| [018 prove ingestion generalises](../sprints/output/018-ingestion-generalises-output.md) | Eval | **DONE** — run inline, 6 findings | — |
+| [019 read a score at runtime](loops/019-read-a-score-at-runtime.md) | Enabling | **NEXT — handed to Claude Code (Opus 5)** | 018 |
+| 020 upload a score | Completion | directional | 019 |
 | 007 shape matching and eval harness | Eval | directional | 004 |
 
 ### 001 phrase lookup search vertical slice — DONE
@@ -401,17 +402,24 @@ Six findings, in cost order:
 5. **Grace notes fuse into their principal.** Same tick, so they merge into one `NoteGroup` and the search then demands both notes. 3 in Für Elise, 0 in Moonlight.
 6. **`querySelector('part')` silently takes the first part.** Untested rather than broken — both files are single-part piano. Exactly the shape validation exists to catch.
 
-### 019 upload MusicXML — directional
+### 019 read a score at runtime — NEXT, handed off
 
-The parser is more portable than expected: 240 lines, Node-coupled only at the edges (`readFileSync`, `writeFileSync`, the CLI guard, and `JSDOM` purely to supply `DOMParser`). Browsers have `DOMParser` natively, so **jsdom drops out**. `.mxl` is a ZIP, but `DecompressionStream` is native — possibly no dependency at all, worth a spike rather than an assumption.
+**Renamed from "upload MusicXML", and split in two.** Loop 018 showed the file picker is the small half. The ingestion is a build-time Node script that builds `new JSDOM()` inside itself and hardcodes its input path, its output path, and the export names `moonlightSonata` and `MOONLIGHT_SONATA_NAME` as literals in `renderArtifact`. It cannot read a `.mxl` at all — MuseScore's own download format.
 
-Three consequences that are not obvious:
+- **019 makes the app able to read a score at runtime.** No UI. It ends with a function that takes the bytes of a `.mxl` and returns a validated piece or an actionable refusal. Verified entirely by unit tests against the two `.mxl` files already in the repo — no browser.
+- **020 puts a file picker in front of it.** Drag-and-drop, the error surface these refusals feed, switching the loaded piece, re-anchoring browse and results.
 
-**Storage becomes a real question.** Loop 001 excluded persistence and every loop since has grepped to keep it out. Upload wants "my pieces" to survive a reload. That is an ADR.
+Splitting them makes 019 verifiable without a UI, and 020 a genuinely small UI loop instead of a UI loop with a parser hidden inside it.
 
-**The e2e suite's premise breaks.** Its assertions are Moonlight constants — `55 possible next notes`, `78 occurrences of [E4]`, `Measure 1 of 69`. A variable piece makes them meaningless unless a fixture piece is pinned for tests.
+**The check that makes 019 honest:** parsing `moonlight-sonata.mxl` through the new path must be **deep-equal to the committed artifact** — 823 groups, every field. That artifact is what every loop since 004 asserts against. Reproduce it and the refactor provably changed nothing; fail and every downstream test has to be re-argued. Its twin is that `node scripts/ingest-musicxml.mjs` must still regenerate the file with no diff — a refactor that reproduces the artifact once but cannot regenerate it has moved the problem, not solved it. And a third check exists because **two copies of the tick walk is the failure mode that would look like success.**
 
-**Failure needs a surface.** Today a bad parse is impossible because the artifact is committed and correct. Upload makes "this has no staff information" and "this is not MusicXML" states the UI must express.
+**Architecture, frozen.** The tick walk takes an already-parsed document instead of building its own — browser hands it `DOMParser`, script and tests hand it `jsdom`. One algorithm, three callers. It lives in a **new `src/lib/musicxml/`** so Loop 014's purity check on `src/lib/music/` survives **untouched**: that directory holds pure functions over `NoteGroup[]`, the new one turns a file into `NoteGroup[]`. The split is the honest boundary, not a workaround.
+
+**Zip: try zero dependencies first.** `.mxl` is deflate, and `DecompressionStream('deflate-raw')` is native in browsers and Node 22; the rest is ~60 lines of local-file-header reading, testable against two real files. Acceptable only if both files read correctly and the failure modes are tested — otherwise `fflate`, with the reason recorded. Eighteen loops, one dependency.
+
+**Validation exists to say no in a way you can act on.** The human scoped it: the app may assume a MuseScore download, so validation refuses clearly rather than widening what is accepted. No accommodation code for Finale, Sibelius or OMR. Six specific refusals — not a zip, no `<rootfile>`, not `score-partwise`, more than one `<part>`, no `<divisions>`, no pitched notes — each naming what was wrong and what was expected. **"Invalid file" is a shrug, not a refusal.**
+
+**Decisions the human made, both taken as recommended.** Repeats: **detect and warn, keep document order** — modelling performance order would renumber measures and break every control 016 and 017 built. Pickup: **keep it in the stream, label it "Pickup", exclude it from the bounds**, so Für Elise reports 1–105 and calls itself "105 measures and a pickup". Beat labels: **left alone now that they are documented** — the quarter-note position has never confused the one user and fixing it would change the founding query's label.
 
 ## Open decisions
 
@@ -422,7 +430,9 @@ Three separate failures trace to surfacing staff as though it described hands: A
 Settled empirically, not by argument. The user's own remembered phrase returned **zero** exact matches against the real score, while shape matching returned the correct figure in 8 places. Loop 007 exists, it is an eval loop, and the eval must precede the fuzzy code.
 
 **OPEN DECISION 10 — does the storage exclusion survive browse?**
-Loop 017 is the loop that creates the demand. The reader jumps to measure 34, reloads, and is back at measure 1; one line of `localStorage` would fix it. The handoff forbade it in three places and Loop 001 excluded it, so instead there is a test that **asserts the reload loses the position** — the absence is now a checked property rather than an omission waiting to be quietly filled. That is the right holding position and not an answer. Loop 018 or 019 will have to answer it rather than inherit it.
+Loop 017 is the loop that creates the demand. The reader jumps to measure 34, reloads, and is back at measure 1; one line of `localStorage` would fix it. The handoff forbade it in three places and Loop 001 excluded it, so instead there is a test that **asserts the reload loses the position** — the absence is now a checked property rather than an omission waiting to be quietly filled. That is the right holding position and not an answer.
+
+**Sharpened by 019.** A piece read at runtime also vanishes on reload, and re-dragging a file every session is a far larger cost than re-scrolling. 019 holds the line deliberately: reversing an eighteen-loop contract inside a feature loop is how contracts erode quietly. It gets its own loop or it does not happen, and Loop 020's week of use is where the evidence comes from.
 
 Note the softer form that already arrived: keeping the browse position across a query is itself a small piece of memory. It is genuine session state — not stored, gone on reload — but "remember where I was" entered the product in this loop even in the sanctioned form.
 

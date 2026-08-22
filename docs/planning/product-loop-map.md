@@ -92,7 +92,7 @@ flowchart LR
 | [014 results as onset strips](loops/014-onset-strips.md) | Completion | **DONE** — all 19 checks, 0 repairs | — |
 | [015 stack the following onsets](loops/015-stacked-following.md) | Completion | **DONE** — "then" rows stacked | — |
 | [016 focused occurrence + measure navigation](loops/016-measure-navigation.md) | Completion | **DONE** — all 21 checks, 0 repairs | — |
-| [017 browse the piece](loops/017-browse-the-piece.md) | Completion | **NEXT — spec ready** | — |
+| [017 browse the piece](loops/017-browse-the-piece.md) | Completion | **DONE** — all 21 checks, 1 repair | — |
 | 018 prove ingestion generalises | Eval | designed, needs a second source file | — |
 | 019 upload MusicXML | Completion | directional | 018 |
 | 007 shape matching and eval harness | Eval | directional | 004 |
@@ -354,19 +354,35 @@ Checks 10 and 11 are the loop — the frame must be byte-identical before and af
 
 Recorded honestly: this widens the product from *lookup* to *lookup plus read-forward*. Still not a piano roll — no durations, no timeline, no proportional spacing — a boundary the user has settled.
 
-### 017 browse the piece — NEXT
+### 017 browse the piece — DONE
 
-The tab opens empty; the piece is invisible until something matches. The user practises from the score, often knows where he stopped, and wants to land there.
+The tab opened empty; the piece was invisible until something matched. The user practises from the score, often knows where he stopped, and wanted to land there.
 
-Measuring settled the design. Rendering the whole movement is **~49,400px and ~48,600 key nodes**, so incremental loading is a ceiling rather than a nicety. And **reaching measure 34 by scrolling costs ~24,100px** — about thirty screens — so a **jump-to-measure control is required, not optional**. Scroll reads forward; jump gets you there.
+Shipped as `1b478d1`, "Open the phrase lookup tab on the piece itself". Browse is now the landing state: no query shows the piece from measure 1, a query shows results, clearing the query returns to browse. One surface, two ways in. All 21 checks passed, one repair used.
 
-Loop 016's fixed frame carries this: a window recomputing per measure would resize keys continuously through 50,000px of scroll. That decision was made for navigation and turns out to be load-bearing for browse.
+**The spec's measurements were stale, and the executor caught it.** Loop 017's pixel column was taken when `OnsetStrip.tsx` drew a 14px white key. Commit `1188094` — already on the branch when the loop started — set `SCALE = 1` to match the By Key and By Name tabs, making a row 112px on a 120px pitch. Every pixel figure in the handoff was roughly half the truth: the whole movement is ~98,800px, not ~49,400; measure 34 is ~48,200px down, not ~24,100.
 
-**No persistence.** The human supplies the memory of where he stopped; the jump control acts on it. Loop 001's storage exclusion holds.
+The argument survived intact — scrolling cannot serve the use case, rendering everything is a ceiling — and both became twice as true. What changed was the tuning: **three measures load initially, not five**, because the scale doubled and the span had to halve. Node counts were unaffected, since the scale changed how big a key is drawn, not how many exist. See `docs/learning/measurements-expire.md`.
 
-Check 10 is the one most likely to be skipped: **loading more must be keyboard-operable**, not scroll-only. Scroll-triggered loading looks finished without it and silently strands anyone who cannot generate a scroll event.
+**Executor decisions, all four recorded with reasoning.**
 
-Second widening in two loops, recorded honestly: the product becomes a **pitch-position score reader with lookup in it**. Still not a piano roll — no durations, no rhythm, no notation.
+- **Three measures, three per extension** — 36 onsets, 2,124 key nodes, **4.4%** of the movement's 48,557. Extension equals first load deliberately, so the second press costs what the first taught the reader to expect.
+- **No scroll-triggered loading at all**, though the handoff permitted it alongside the control. Two mechanisms is precisely how check 10 gets skipped without anyone noticing — content arrives by scroll before the button is pressed, and a passing test stops distinguishing the two paths. Replaced with a test that scrolls to the bottom and asserts **nothing loaded**.
+- **Jump sits at the top; `<` / `>` are absent from browse.** In focused results those glyphs *replace* the measure on screen; in browse, measures *accumulate*. The same control with opposite meanings on one surface is worse than no shortcut. Machinery is still shared — both are built on Loop 016's `measures.ts`.
+- **Browse and results are mutually exclusive**, and browse disappears on the first key press, not on commit — two different rulers in front of the reader is exactly what Loop 014 exists to prevent. The reader's position survives a query and a Clear all, because where you had got to is not part of the query.
+
+One detail worth keeping: the jump field is `type="text"` with `inputMode="numeric"`, **not** `type="number"`, because Chromium silently discards non-digits typed into a number field — which would have made the "abc" case unreachable and left the reader with no explanation rather than an unnecessary one.
+
+**Two contract-hygiene problems were escalated before implementation, not resolved quietly.** `docs/agent-handoff.md` on disk was still the Sprint 16 contract, so archiving it would have preserved the wrong document and made Task 0 meaningless; the Sprint 17 text was written first, as step 0a, before any source file was touched. And the working tree was dirty with the previous loop's work, so that was committed separately as `e734dc5` — Loop 017's single commit contains only Loop 017. Both are the right instinct: contract hygiene that would have silently corrupted the sprint record.
+
+**Second widening in two loops, and the larger one.** Loop 016 made a result something you read forward from; 017 makes the piece readable with no result at all. The product is now a **pitch-position score reader with lookup in it**. Still not a piano roll — proportional spacing and a fixed-cursor scrolling viewport were both refused, and there is a test that fails if rows stop being evenly spaced. Virtualisation was refused too: it means a dependency, or hand-rolled scroll-position maths that is scroll-triggered loading under another name.
+
+**Carried forward from the output's risks:**
+
+- Browse has **no staff toggle** — it lives in the results surface, which check 17 froze. A reader browsing cannot turn staff colouring on without first building a query. Real gap, deliberately not fixed under this contract.
+- `space-y-2` is **dead code** in `PhraseLookupSurface.tsx` — used twice, compiled into `src/index.css` zero times. Confirmed independently. Exactly the silent failure OPEN DECISION 9 describes. Left alone because fixing it changes the frozen surface's spacing; the next loop allowed to touch that file should take it.
+- A jump to an empty measure lands on the **next** measure with onsets. All 69 measures here carry onsets, so only a fixture exercises it. Safer than a blank page, and confusing without explanation.
+- Three measures is **a guess about a reader nobody has watched**. Two exported constants in `browse.ts`; changing them changes nothing else.
 
 ### 018 prove ingestion generalises — designed, blocked on a file
 
@@ -395,6 +411,11 @@ Three separate failures trace to surfacing staff as though it described hands: A
 
 **~~OPEN DECISION 1~~ — RESOLVED: exact matching does not survive contact.**
 Settled empirically, not by argument. The user's own remembered phrase returned **zero** exact matches against the real score, while shape matching returned the correct figure in 8 places. Loop 007 exists, it is an eval loop, and the eval must precede the fuzzy code.
+
+**OPEN DECISION 10 — does the storage exclusion survive browse?**
+Loop 017 is the loop that creates the demand. The reader jumps to measure 34, reloads, and is back at measure 1; one line of `localStorage` would fix it. The handoff forbade it in three places and Loop 001 excluded it, so instead there is a test that **asserts the reload loses the position** — the absence is now a checked property rather than an omission waiting to be quietly filled. That is the right holding position and not an answer. Loop 018 or 019 will have to answer it rather than inherit it.
+
+Note the softer form that already arrived: keeping the browse position across a query is itself a small piece of memory. It is genuine session state — not stored, gone on reload — but "remember where I was" entered the product in this loop even in the sanctioned form.
 
 **OPEN DECISION 2 — one piece or a corpus?**
 Search across a library is a different product from search within a piece the user has already chosen. This changes the ranking problem, the UI, and whether an index is needed at all. Not yet answered. Does not block 002 or 003.
@@ -450,6 +471,12 @@ Loop 001's `BLOCKED` outcome produced a durable learning worth carrying into eve
 The resolution also demonstrated the escape hatch: the macro layer can close a stranded interaction check itself, given a human-hosted dev server. Codex was right to stop rather than substitute code inspection for a required check — that restraint is what made the amendment trustworthy.
 
 A second discipline was worth the cost here: when the macro layer re-verified Loop 001, it wrote a **fresh** semantics probe rather than re-running the loop's own tests. Re-running an executor's tests confirms the tests, not the behaviour. The fresh probe is what surfaced that the fixture's distractors are real.
+
+### Learning notes
+
+- `docs/learning/never-mutate-an-active-handoff.md` — Loop 010. The macro layer edited a live contract mid-execution; the executor correctly reported `FAILED_VERIFICATION`.
+- `docs/learning/specify-the-property-not-the-proxy.md` — Loop 013. A check tested that no `data-testid` attributes existed rather than that the suite did not use them.
+- `docs/learning/measurements-expire.md` — Loop 017. A handoff reasoned from pixel measurements taken one commit earlier; every figure was half the truth by the time the loop ran.
 
 ## The most expensive lesson so far
 

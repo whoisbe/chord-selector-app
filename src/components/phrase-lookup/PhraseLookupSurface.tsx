@@ -13,6 +13,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '../ui/button';
 import { MOONLIGHT_SONATA_NAME, moonlightSonata } from '../../data/pieces/moonlight-sonata';
 import {
+  BROWSE_EXTENSION_MEASURES,
+  BROWSE_INITIAL_MEASURES,
+} from '../../lib/music/browse';
+import {
   applyCapture,
   selectionPitches,
   type PitchCapture,
@@ -30,6 +34,7 @@ import { describePitchRange, sharedPitchRange } from '../../lib/music/onset-rang
 import { findPhraseMatches } from '../../lib/music/phrase-search';
 import { pitchToLabel } from '../../lib/music/pitch-label';
 import type { NoteGroup, PhraseQuery } from '../../lib/music/types';
+import { BrowseThePiece } from './BrowseThePiece';
 import { FocusedOccurrence } from './FocusedOccurrence';
 import { OnsetStrip } from './OnsetStrip';
 import { PhraseKeyboard } from './PhraseKeyboard';
@@ -103,6 +108,14 @@ export function PhraseLookupSurface() {
   // view opens one hit at a time instead of putting context controls on all
   // of them.
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  // Loop 017: where the reader has got to in the piece, and how much of it is
+  // drawn. It lives here rather than inside BrowseThePiece so that building a
+  // query and then clearing it returns the reader to where they were reading
+  // instead of throwing them back to measure 1 — the query is the thing being
+  // cleared, not their place. Session state, like everything above it: no
+  // storage, and nothing here survives a reload.
+  const [browseAnchor, setBrowseAnchor] = useState(1);
+  const [browseSpan, setBrowseSpan] = useState(BROWSE_INITIAL_MEASURES);
 
   const keys = useMemo(() => keyLayout(INPUT_RANGE.minPitch, INPUT_RANGE.maxPitch), []);
 
@@ -255,6 +268,19 @@ export function PhraseLookupSurface() {
     setSearchNonce(0);
   }, []);
 
+  // A jump re-anchors and starts a fresh page from there. Showing more extends
+  // the page downwards and leaves the anchor alone, so everything already read
+  // stays on screen — loading more adds to the piece in front of the reader
+  // rather than replacing it.
+  const jumpToMeasure = useCallback((measure: number) => {
+    setBrowseAnchor(measure);
+    setBrowseSpan(BROWSE_INITIAL_MEASURES);
+  }, []);
+
+  const showMoreMeasures = useCallback(() => {
+    setBrowseSpan((current) => current + BROWSE_EXTENSION_MEASURES);
+  }, []);
+
   const queryText = prefix.map((group) => formatGroup(group.notes)).join(' → ');
   const selectionText = selection.length === 0 ? null : formatGroup(selectionPitches(selection));
 
@@ -372,9 +398,30 @@ export function PhraseLookupSurface() {
         ) : null}
 
         {prefix.length === 0 ? (
-          <p className="text-muted-foreground text-sm" data-testid="empty-query-message">
-            No groups entered yet. Select the keys of one onset, then press Add group.
-          </p>
+          <>
+            <p className="text-muted-foreground text-sm" data-testid="empty-query-message">
+              No groups entered yet. Select the keys of one onset, then press Add group.
+            </p>
+            {/* Loop 017: with nothing entered at all, the piece itself is what
+                the tab shows. It goes the moment a key is touched, not only
+                when a group is committed — an assembled selection already
+                draws containment strips on their own shared range, and browse
+                is drawn on the fixed full-piece range, so leaving both up
+                would put two different rulers in front of the reader. That is
+                precisely what Loop 014 exists to prevent, and Loop 016
+                restated it when it dropped the focus on a selection change. */}
+            {selection.length === 0 ? (
+              <BrowseThePiece
+                stream={moonlightSonata}
+                range={FULL_RANGE}
+                showStaff={showStaff}
+                anchor={browseAnchor}
+                span={browseSpan}
+                onJump={jumpToMeasure}
+                onShowMore={showMoreMeasures}
+              />
+            ) : null}
+          </>
         ) : matches.length === 0 ? (
           <p className="text-sm" data-testid="no-results-message">
             No occurrences of {queryText} in this movement.

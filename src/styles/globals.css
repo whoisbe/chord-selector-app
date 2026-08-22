@@ -471,3 +471,93 @@ html {
   gap: 0.25rem;
   color: var(--foreground);
 }
+
+/* Loop 017 — browsing the piece.
+   Hand-authored for the same reason as the Loop 006, 014, 015 and 016 blocks
+   above: src/index.css is a pre-compiled Tailwind v4 artifact and this project
+   has no Tailwind build step, so a utility class that is not already compiled
+   into it does nothing at all, silently. :focus-visible and :disabled cannot
+   be expressed as inline styles in any case. (space-y-2, for instance, is not
+   in that artifact — only space-y-3 and space-y-8 are.) */
+
+.browse-piece {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* The jump control and the "showing measures N to M" line stay together at the
+   top of the piece. Getting somewhere is the first thing a reader wants and
+   the one thing scrolling cannot give them: measure 34 is tens of thousands of
+   pixels down. */
+.browse-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.browse-jump {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.browse-jump-input {
+  width: 5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.125rem 0.5rem;
+  line-height: 1.5;
+  background: transparent;
+  color: var(--foreground);
+}
+
+/* :focus-visible cannot be expressed as an inline style. */
+.browse-jump-input:focus-visible {
+  outline: 2px solid #1f705f;
+  outline-offset: 2px;
+}
+
+/* A refused jump is said out loud and drawn as its own line, never swallowed.
+   The colour is the third channel only — the sentence itself names the piece's
+   first and last measure, so the message reads the same in greyscale. */
+.browse-jump-error {
+  border-left: 3px solid #9a4f1b;
+  padding-left: 0.5rem;
+  color: var(--foreground);
+}
+
+.browse-measure {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+/* The measure number is the landmark a reader navigates by, so it is a
+   heading with a rule above it rather than a caption inside the rows. */
+.browse-measure-heading {
+  margin: 0;
+}
+
+/* One row per onset, evenly spaced, in stream order. No proportional spacing
+   by rhythm, no continuous time axis, no durations read from anywhere: this is
+   a column of discrete onsets, not a piano roll. Same rule, and the same
+   reason, as .focused-onsets above. */
+.browse-measure-onsets {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Every row starts at the same x, so a pitch drawn in measure 1 and the same
+   pitch drawn in measure 34 land in the same place. That alignment is the
+   whole point of the fixed frame, and it is what an unequal left edge would
+   silently destroy. */
+.browse-onset-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}

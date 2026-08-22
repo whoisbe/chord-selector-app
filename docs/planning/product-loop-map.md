@@ -93,7 +93,7 @@ flowchart LR
 | [015 stack the following onsets](loops/015-stacked-following.md) | Completion | **DONE** — "then" rows stacked | — |
 | [016 focused occurrence + measure navigation](loops/016-measure-navigation.md) | Completion | **DONE** — all 21 checks, 0 repairs | — |
 | [017 browse the piece](loops/017-browse-the-piece.md) | Completion | **DONE** — all 21 checks, 1 repair | — |
-| 018 prove ingestion generalises | Eval | designed, needs a second source file | — |
+| [018 prove ingestion generalises](loops/018-prove-ingestion-generalises.md) | Eval | **DONE** — run inline, 6 findings | — |
 | 019 upload MusicXML | Completion | directional | 018 |
 | 007 shape matching and eval harness | Eval | directional | 004 |
 
@@ -384,13 +384,22 @@ One detail worth keeping: the jump field is `type="text"` with `inputMode="numer
 - A jump to an empty measure lands on the **next** measure with onsets. All 69 measures here carry onsets, so only a fixture exercises it. Safer than a blank page, and confusing without explanation.
 - Three measures is **a guess about a reader nobody has watched**. Two exported constants in `browse.ts`; changing them changes nothing else.
 
-### 018 prove ingestion generalises — designed, blocked on a file
+### 018 prove ingestion generalises — DONE
 
-**Closes ADR 0001's untested caveat**, flagged twice and never acted on: the finding was *"MusicXML from MuseScore is excellent"*, not *"MusicXML is excellent"*, and the 1210-of-1210 explicit `<staff>` figure is a MuseScore property rather than a format guarantee.
+Run **inline by the macro layer** on 2026-08-22 against OpenScore's Für Elise, downloaded through MuseScore. The loop was "run a second file through and see what breaks" — measurement, not a sprint. Full evidence in `docs/sprints/output/018-ingestion-generalises-output.md`.
 
-Run a second, **differently-sourced** MusicXML through the existing script and see what breaks. Cheap, and it decides whether Loop 019 is a UI loop or a parser-hardening project — a question far better answered before users can hand the app arbitrary files than after.
+The algorithm was reimplemented in Python to run it, and **validated against the committed artifact first**: on Moonlight it reproduces 823 onsets, MIDI 29–87, 55 distinct pitches, 1,169 pitched notes, 0 inferred staves — every number ADR 0001 and 0002 record.
 
-**Blocked on the human dropping a file from a different exporter into `data/spike/`.**
+**Headline: the merge algorithm generalises; everything around it does not.** Für Elise parses cleanly — 598 onsets, 106 measures, MIDI 33–100, 56 distinct pitches, **0 inferred staff assignments**, no negative ticks, no measure without onsets. ADR 0001's untested caveat is **half-closed**: MusicXML from MuseScore is excellent across two engravers and two MuseScore versions. Outside MuseScore is now explicitly **out of scope** — the human's decision, recorded here: the app may assume a MuseScore download, and must validate rather than accommodate.
+
+Six findings, in cost order:
+
+1. **`.mxl` is a zip and the script cannot open it.** `INPUT_PATH` is hardcoded to an *uncompressed* `.musicxml`; Moonlight only worked because an uncompressed copy sat beside it. The inner filename is arbitrary — `lg-30448188.xml` and `lg-76663811.xml` — so `META-INF/container.xml` must be read and its `<rootfile>` followed. Non-negotiable.
+2. **Measure 0 — Für Elise has a pickup.** Nothing breaks, which is Loops 016 and 017 having been built right: `measureBounds` derives its first measure and `browseMeasures` walks rather than assumes. What lies is the labelling — browse would open on "Measure 0", the jump control would offer "measures 0 to 105", and the piece would be called 106 measures where MuseScore shows 105. Numbering after the pickup matches MuseScore exactly.
+3. **Repeats and voltas — document order is not played order.** 4 repeats, 8 endings, against Moonlight's zero. The product's question is *what comes next*, and across a repeat barline that is not the next element in the document. Nothing detects it and nothing warns. The only finding that is a product-semantics problem rather than a parsing one.
+4. **Beat labels are quarter-note positions, not the meter's beats — and always were.** `beat = 1 + tick / divisions` with divisions per quarter. Für Elise's 3/8 reads 1.0, 1.5, 2.0 where a musician reads 1, 2, 3 — but Moonlight's 2/2 has the same defect, and the founding `m12 b4.33` has been a quarter position all along. **Discovered, not caused.**
+5. **Grace notes fuse into their principal.** Same tick, so they merge into one `NoteGroup` and the search then demands both notes. 3 in Für Elise, 0 in Moonlight.
+6. **`querySelector('part')` silently takes the first part.** Untested rather than broken — both files are single-part piano. Exactly the shape validation exists to catch.
 
 ### 019 upload MusicXML — directional
 

@@ -42,6 +42,9 @@ export const NOTE_TO_MIDI: { [key: string]: number } = {
   'G♯': 68, 'A♭': 68, 'A': 69, 'A♯': 70, 'B♭': 70, 'B': 71,
 };
 
+const SHARP_NOTE_NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+const FLAT_NOTE_NAMES = ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B'];
+
 // Function to get notes for a chord (root position)
 export function getChordNotes(chord: string): number[] {
   const root = chord.replace(/[°m]/g, '');
@@ -62,12 +65,22 @@ export function getChordNotes(chord: string): number[] {
 }
 
 // Get chord voicings (root, 1st inversion, 2nd inversion)
-export function getChordVoicings(chord: string): { name: string; notes: number[] }[] {
+export function getChordVoicings(chord: string): { name: string; notes: number[]; noteNames: string[] }[] {
   const rootNotes = getChordNotes(chord);
+  const noteNames = chord.includes('♭') ? FLAT_NOTE_NAMES : SHARP_NOTE_NAMES;
+  const rootNoteNames = rootNotes.map(note => noteNames[note % 12]);
   
   return [
-    { name: 'Root', notes: rootNotes },
-    { name: '1st Inv', notes: [rootNotes[1], rootNotes[2], rootNotes[0] + 12] },
-    { name: '2nd Inv', notes: [rootNotes[2], rootNotes[0] + 12, rootNotes[1] + 12] },
+    { name: 'Root', notes: rootNotes, noteNames: rootNoteNames },
+    {
+      name: '1st Inv',
+      notes: [rootNotes[1], rootNotes[2], rootNotes[0] + 12],
+      noteNames: rootNoteNames.slice(1).concat(rootNoteNames.slice(0, 1)),
+    },
+    {
+      name: '2nd Inv',
+      notes: [rootNotes[2], rootNotes[0] + 12, rootNotes[1] + 12],
+      noteNames: rootNoteNames.slice(2).concat(rootNoteNames.slice(0, 2)),
+    },
   ];
 }
